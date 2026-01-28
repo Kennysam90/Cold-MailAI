@@ -28,3 +28,28 @@
 - [ ] Verify auth flow works correctly
 - [ ] Check all animations and transitions
 
+## 🔧 Vercel Deployment Fixes - NextAuth 500 Error
+
+### Required Environment Variables (Settings > Environment Variables):
+```
+NEXTAUTH_SECRET=run: openssl rand -base64 32
+NEXTAUTH_URL=https://cold-mail-ai-red.vercel.app
+GOOGLE_CLIENT_ID=your-google-client-id (optional)
+GOOGLE_CLIENT_SECRET=your-google-client-secret (optional)
+GITHUB_CLIENT_ID=your-github-client-id (optional)
+GITHUB_CLIENT_SECRET=your-github-client-secret (optional)
+```
+
+### To generate NEXTAUTH_SECRET, run:
+```bash
+openssl rand -base64 32
+```
+
+### After adding environment variables:
+1. Redeploy the application
+2. Or use "Redeploy" button in Vercel dashboard
+
+### ✅ Completed Fixes
+- [x] Fixed NextAuth session callback null safety (prevents 500 error when token.id is undefined)
+- [x] Created `.env.example` template with all required variables
+
