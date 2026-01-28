@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Get Ollama configuration from environment
-function getOllamaConfig() {
+// Get AI configuration from environment
+function getAIConfig() {
+  const googleApiKey = process.env.GOOGLE_AI_API_KEY;
+  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+  const ollamaModel = process.env.OLLAMA_MODEL || "tinyllama";
+
   return {
-    baseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
-    model: process.env.OLLAMA_MODEL || "tinyllama",
-    apiKey: process.env.OLLAMA_API_KEY,
+    googleApiKey,
+    ollamaBaseUrl,
+    ollamaModel,
+    useGoogle: !!googleApiKey,
   };
 }
 
@@ -34,23 +40,52 @@ async function getAvailableModels(baseUrl) {
 async function getBestModel(preferredModel, baseUrl) {
   const available = await getAvailableModels(baseUrl);
   if (available.length === 0) return preferredModel;
-  
+
   // Normalize preferred model name (remove :latest suffix)
   const normalizedPreferred = preferredModel.replace(/:latest$/, '');
-  
+
   // Try exact match first
   if (available.includes(preferredModel) || available.includes(normalizedPreferred)) {
     return preferredModel;
   }
-  
+
   // Try partial match
-  const partialMatch = available.find(m => 
+  const partialMatch = available.find(m =>
     m.toLowerCase().includes(normalizedPreferred.toLowerCase())
   );
   if (partialMatch) return partialMatch;
-  
+
   // Return first available model
   return available[0];
+}
+
+// Generate a single email using Google Gemini
+async function generateSingleEmailWithGemini(params) {
+  const { companyUrl, targetName, yourOffer, tone, style, apiKey } = params;
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+  const prompt = `You are an expert cold email writer. Generate a personalized, compelling cold email with the following details:
+
+- Target Company/Person: ${targetName ? targetName : "the target person"} (Company: ${companyUrl})
+- What you're offering: ${yourOffer}
+- Tone: ${tone}
+- Style: ${style}
+
+Requirements:
+1. Write a professional, engaging cold email
+2. Keep it concise (150-200 words max)
+3. Make it personalized and relevant to the company/industry
+4. Include a clear call-to-action
+5. Do NOT include a subject line
+6. Sign off with "Best regards," followed by a simple signature placeholder
+
+Return ONLY the email body, nothing else.`;
+
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  return response.text();
 }
 
 // Generate a single email using Ollama
@@ -356,21 +391,36 @@ export async function POST(req) {
         const index = (batch * 4 + i) % 4;
         const { tone, style } = combinations[index];
         
-        batchPromises.push(
-          generateSingleEmail({
-            companyUrl,
-            targetName,
-            yourOffer,
-            tone,
-            style,
-            model,
-            baseUrl,
-            apiKey,
-          }).catch(err => {
-            console.error(`Error generating email ${batch * 4 + i}:`, err);
-            return null;
-          })
-        );
+        if (aiService === 'gemini') {
+          batchPromises.push(
+            generateSingleEmailWithGemini({
+              companyUrl,
+              targetName,
+              yourOffer,
+              tone,
+              style,
+              apiKey: googleApiKey,
+            }).catch(err => {
+              console.error(`Error generating email ${batch * 4 + i}:`, err);
+              return null;
+            })
+          );
+        } else {
+          batchPromises.push(
+            generateSingleEmail({
+              companyUrl,
+              targetName,
+              yourOffer,
+              tone,
+              style,
+              model,
+              baseUrl: ollamaBaseUrl,
+            }).catch(err => {
+              console.error(`Error generating email ${batch * 4 + i}:`, err);
+              return null;
+            })
+          );
+        }
       }
 
       const batchResults = await Promise.all(batchPromises);
@@ -397,10 +447,10 @@ export async function POST(req) {
       emails.push(...templateEmails.emails.slice(0, remainingNeeded).map(e => ({ ...e, aiGenerated: false })));
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       emails: emails.slice(0, 30),
       aiGenerated: true,
-      model: model,
+      model: aiService === 'gemini' ? 'gemini-pro' : model,
     });
 
   } catch (err) {

@@ -105,7 +105,7 @@ export default function SettingsPage() {
 
       {/* Main content */}
       <main className="flex-1 flex justify-center overflow-y-auto" style={{ marginLeft: "80px" }}>
-        <div className="max-w-4xl w-full px-10 py-12 space-y-10">
+        <div className="max-w-4xl w-full px-10 py-12 space-y-10" >
           {/* HEADER */}
           <div className="space-y-2" style={{ justifyContent: "center", textAlign: "center", marginBottom: "1em" }}>
             <h1 className="text-4xl font-bold flex items-center justify-center gap-2">
