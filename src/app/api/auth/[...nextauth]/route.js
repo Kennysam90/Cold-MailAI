@@ -25,10 +25,10 @@ const handler = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      // Send properties to the client with null safety
-      session.accessToken = token?.accessToken || null;
-      session.user.id = token?.id || token?.sub || session?.user?.id || null;
-      session.user.provider = token?.provider || "unknown";
+      // Send properties to the client
+      session.accessToken = token.accessToken;
+      session.user.id = token.id;
+      session.user.provider = token.provider;
       return session;
     },
   },
