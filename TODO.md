@@ -1,55 +1,27 @@
-# Todo List - Authentication & User Profile
+# Dashboard API Integration Plan
 
-## ✅ Phase 1: Authentication Page - COMPLETED
-- [x] Create auth page structure with login/signup tabs
-- [x] Implement professional form design with validation
-- [x] Add responsive styling matching existing theme
-- [x] Implement mock authentication logic with localStorage
-- [x] Add smooth animations and transitions
-- [x] Add password strength indicator
-- [x] Add social login buttons (Google, GitHub)
+## Status: ✅ Completed
 
-## ✅ Phase 2: Sidebar User Profile - COMPLETED
-- [x] Add user profile section at bottom of sidebar
-- [x] Include avatar, name, and email display
-- [x] Add logout functionality
-- [x] Style to match existing design language
-- [x] Add premium badge for premium users
-- [x] Add green online indicator
+### Completed Tasks
+- [x] 1. Create TODO.md and plan
+- [x] 2. Update Dashboard to fetch stats from /api/dashboard/stats
+- [x] 3. Update health check to use /api/dashboard/health endpoint
+- [x] 4. Add loading states and error handling
+- [x] 5. Make campaigns table functional (load from API)
 
-## ✅ Phase 3: Authentication State Management - COMPLETED
-- [x] Create auth context for global auth state
-- [x] Protect routes (redirect to auth if not logged in)
-- [x] Update layout to include AuthProvider
-- [x] Update chat page to include Sidebar
+### API Routes Available
+- `/api/dashboard/stats` - GET (stats + campaigns), POST (campaign CRUD)
+- [x] `/api/dashboard/health` - GET (system health), POST (test services)
+- `/api/dashboard/integrations` - Bot integrations (NOT implemented per user request)
 
-## Phase 4: Testing & Polish
-- [ ] Test responsiveness on mobile devices
-- [ ] Verify auth flow works correctly
-- [ ] Check all animations and transitions
+### Changes to Dashboard/page.js
+✅ 1. Replace hardcoded stats with API-fetched data
+✅ 2. Replace direct Ollama health check with /api/dashboard/health
+✅ 3. Load campaigns from /api/dashboard/stats
+✅ 4. Add loading spinners
+✅ 5. Add error toasts/messages
+✅ 6. Add refresh functionality
 
-## 🔧 Vercel Deployment Fixes - NextAuth 500 Error
-
-### Required Environment Variables (Settings > Environment Variables):
-```
-NEXTAUTH_SECRET=run: openssl rand -base64 32
-NEXTAUTH_URL=https://cold-mail-ai-red.vercel.app
-GOOGLE_CLIENT_ID=your-google-client-id (optional)
-GOOGLE_CLIENT_SECRET=your-google-client-secret (optional)
-GITHUB_CLIENT_ID=your-github-client-id (optional)
-GITHUB_CLIENT_SECRET=your-github-client-secret (optional)
-```
-
-### To generate NEXTAUTH_SECRET, run:
-```bash
-openssl rand -base64 32
-```
-
-### After adding environment variables:
-1. Redeploy the application
-2. Or use "Redeploy" button in Vercel dashboard
-
-### ✅ Completed Fixes
-- [x] Fixed NextAuth session callback null safety (prevents 500 error when token.id is undefined)
-- [x] Created `.env.example` template with all required variables
+### Not Implementing (User Request)
+- Bot integrations (WhatsApp, Telegram, Web Widget) - User will do later
 

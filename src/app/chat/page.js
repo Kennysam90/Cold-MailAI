@@ -2,13 +2,9 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Send } from "lucide-react";
+import Sidebar from "@/Component/sidebar";
 
 export default function ChatPage() {
-  const [streamingText, setStreamingText] = useState(""); // text currently typing
-  const [context, setContext] = useState({
-    topic: null,
-  });
-
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -24,143 +20,159 @@ export default function ChatPage() {
   }, [messages]);
 
   const sendMessage = async () => {
-  if (!input.trim()) return;
+    if (!input.trim()) return;
 
-  const userMessage = { role: "user", content: input };
-  const updatedMessages = [...messages, userMessage];
+    const userMessage = { role: "user", content: input };
+    const updatedMessages = [...messages, userMessage];
 
-  setMessages(updatedMessages);
-  setInput("");
+    setMessages(updatedMessages);
+    setInput("");
 
-  try {
-    // typing indicator
-    setMessages(prev => [
-      ...prev,
-      { role: "assistant", content: "Typing…" },
-    ]);
+    try {
+      setMessages(prev => [...prev, { role: "assistant", content: "Typing…" }]);
 
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: updatedMessages,
-      }),
-    });
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: updatedMessages }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    // replace "Typing…" with real response
-    setMessages(prev => [
-      ...prev.slice(0, -1),
-      { role: "assistant", content: data.reply },
-    ]);
-  } catch (err) {
-    setMessages(prev => [
-      ...prev.slice(0, -1),
-      {
-        role: "assistant",
-        content: "⚠️ Local AI not responding. Is Ollama running?",
-      },
-    ]);
-  }
-};
-
+      setMessages(prev => [
+        ...prev.slice(0, -1),
+        { role: "assistant", content: data.reply },
+      ]);
+    } catch (err) {
+      setMessages(prev => [
+        ...prev.slice(0, -1),
+        {
+          role: "assistant",
+          content: "⚠️ Local AI not responding. Is Ollama running?",
+        },
+      ]);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-black text-white flex justify-center">
-      {/* Chat Container */}
-      <div className="w-full max-w-3xl flex flex-col h-screen" >
+    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "black", color: "white", fontFamily: "sans-serif" }}>
+      {/* Sidebar remains fixed */}
+      <Sidebar />
 
-        {/* Header */}
-        <div className="border-b border-white/10 p-4 text-center" style={{
-          padding:"1em"
+      {/* Main Container - Offsets the sidebar and fills the space */}
+      <main style={{ 
+        flex: 1, 
+        marginLeft: "13em", 
+        display: "flex", 
+        justifyContent: "center", 
+        height: "100vh" 
+      }}>
+        
+        {/* Chat Box Container */}
+        <div style={{ 
+          width: "100%", 
+          maxWidth: "800px", 
+          display: "flex", 
+          flexDirection: "column", 
+          height: "100%" 
         }}>
-          <h1 className="text-lg font-semibold">ColdAI Chat</h1>
-        </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6" style={{
-          padding:"1em"
-        }}>
-          {messages.map((msg, index) => (
-            <div
-              key={index}
-              className={`flex ${
-                msg.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
+          {/* Header */}
+          <div style={{ 
+            padding: "1.5em", 
+            borderBottom: "1px solid rgba(255,255,255,0.1)", 
+            textAlign: "center" 
+          }}>
+            <h1 style={{ fontSize: "1.2rem", fontWeight: "600", margin: 0 }}>ColdAI Chat</h1>
+          </div>
+
+          {/* Messages Area */}
+          <div style={{ 
+            flex: 1, 
+            overflowY: "auto", 
+            padding: "2em", 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: "1.5em" 
+          }}>
+            {messages.map((msg, index) => (
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed  ${
-                  msg.role === "user"
-                    ? "bg-indigo-600 text-white"
-                    : "bg-white/10 text-gray-200"
-                }`} style={{
-                  padding:"1em"
+                key={index}
+                style={{
+                  display: "flex",
+                  justifyContent: msg.role === "user" ? "flex-end" : "flex-start"
                 }}
               >
-                {msg.content}
+                <div
+                  style={{
+                    maxWidth: "80%",
+                    borderRadius: "18px",
+                    padding: "1em 1.2em",
+                    fontSize: "0.95rem",
+                    lineHeight: "1.5",
+                    backgroundColor: msg.role === "user" ? "#4f46e5" : "rgba(255,255,255,0.1)",
+                    color: msg.role === "user" ? "white" : "#e5e7eb",
+                    boxShadow: msg.role === "user" ? "0 4px 12px rgba(79, 70, 229, 0.2)" : "none"
+                  }}
+                >
+                  {msg.content}
+                </div>
               </div>
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
 
-        {/* Input */}
-        <div className="border-t border-white/10 p-4" style={{
-              paddingBottom:"2em"
+          {/* Input Area */}
+          <div style={{ padding: "1.5em 2em 3em 2em" }}>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.8em",
+              backgroundColor: "rgba(31, 41, 55, 0.6)",
+              borderRadius: "16px",
+              padding: "0.5em 1em",
+              backdropFilter: "blur(10px)",
+              border: "1px solid rgba(255,255,255,0.05)"
             }}>
-                  <div
-          className="
-            w-full
-            max-w-3xl
-            mx-auto
-            mb-6
-            flex items-center gap-3
-            bg-gray-800/60
-            rounded-2xl
-            px-3 sm:px-4
-            py-2 sm:py-3
-            backdrop-blur
-          "
-          style={{
-              padding:"0.5em"
-            }}
-        >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Type your message..."
-            className="
-              flex-1
-              bg-transparent
-              outline-none
-              text-[16px] sm:text-base
-              text-gray-100
-              placeholder:text-gray-400
-              pl-4 sm:pl-5
-              min-h-[50px]
-            "
-          />
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                placeholder="Type your message..."
+                style={{
+                  flex: 1,
+                  backgroundColor: "transparent",
+                  border: "none",
+                  outline: "none",
+                  color: "white",
+                  fontSize: "1rem",
+                  minHeight: "50px",
+                  paddingLeft: "0.5em"
+                }}
+              />
 
-          <button
-            onClick={sendMessage}
-            className="
-              flex items-center justify-center
-              w-10 h-10 sm:w-11 sm:h-11
-              rounded-xl
-              bg-gray-700
-              hover:bg-gray-600
-              transition
-            "
-          >
-            <Send size={18} className="text-gray-200" />
-          </button>
-        </div>
+              <button
+                onClick={sendMessage}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "12px",
+                  backgroundColor: "#374151",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "0.2s"
+                }}
+              >
+                <Send size={18} color="#e5e7eb" />
+              </button>
+            </div>
+          </div>
 
         </div>
-
-      </div>
+      </main>
     </div>
   );
 }

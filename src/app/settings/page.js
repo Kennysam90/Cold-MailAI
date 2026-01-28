@@ -25,13 +25,11 @@ export default function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("unknown");
 
-  // Load Ollama config from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("ollamaConfig");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Validate model is installed, otherwise reset to tinyllama
         const validModels = ["tinyllama", "llama3.2", "mistral", "codellama", "llama2"];
         if (!parsed.model || !validModels.some(m => parsed.model.toLowerCase().includes(m.toLowerCase()))) {
           parsed.model = "tinyllama";
@@ -40,41 +38,64 @@ export default function SettingsPage() {
         setOllamaConfig(parsed);
       } catch (e) {
         console.error("Failed to parse saved Ollama config:", e);
-        setOllamaConfig({
-          baseUrl: "http://localhost:11434",
-          model: "tinyllama",
-          apiKey: "",
-        });
       }
     }
   }, []);
 
-  const handleProfileChange = (e) => {
-    setProfile({
-      ...profile,
-      [e.target.name]: e.target.value,
-    });
+  // --- Inline Style Objects ---
+  const cardStyle = {
+    backgroundColor: "#111827",
+    border: "1px solid #1f2937",
+    borderRadius: "24px",
+    padding: "2.5em",
+    marginBottom: "2em",
+    textAlign: "left"
   };
 
+  const inputStyle = {
+    width: "100%",
+    height: "3.5em",
+    padding: "0 1.2em",
+    borderRadius: "12px",
+    backgroundColor: "#030712",
+    border: "1px solid #374151",
+    color: "white",
+    fontSize: "1rem",
+    outline: "none",
+    marginTop: "0.5em"
+  };
+
+  const labelStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "0.9rem",
+    color: "#9ca3af",
+    fontWeight: "600"
+  };
+
+  const sectionHeaderStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    paddingBottom: "1em",
+    borderBottom: "1px solid #1f2937",
+    marginBottom: "1.5em"
+  };
+
+  // --- Handlers ---
+  const handleProfileChange = (e) => setProfile({ ...profile, [e.target.name]: e.target.value });
   const handlePreferenceChange = (e) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
-    setPreferences({
-      ...preferences,
-      [e.target.name]: value,
-    });
+    setPreferences({ ...preferences, [e.target.name]: value });
   };
-
   const handleOllamaChange = (e) => {
     const { name, value } = e.target;
-    setOllamaConfig(prev => ({
-      ...prev,
-      [name]: value,
-    }));
+    setOllamaConfig(prev => ({ ...prev, [name]: value }));
     setConnectionStatus("unknown");
   };
 
   const saveSettings = () => {
-    // Save Ollama config to localStorage
     localStorage.setItem("ollamaConfig", JSON.stringify(ollamaConfig));
     alert("Settings saved successfully!");
   };
@@ -82,98 +103,73 @@ export default function SettingsPage() {
   const testOllamaConnection = async () => {
     setConnectionStatus("testing");
     try {
-      const res = await fetch(`${ollamaConfig.baseUrl}/api/tags`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (res.ok) {
-        setConnectionStatus("success");
-        setTimeout(() => setConnectionStatus("unknown"), 3000);
-      } else {
-        setConnectionStatus("error");
-        setTimeout(() => setConnectionStatus("unknown"), 3000);
-      }
+      const res = await fetch(`${ollamaConfig.baseUrl}/api/tags`, { signal: AbortSignal.timeout(5000) });
+      setConnectionStatus(res.ok ? "success" : "error");
     } catch (err) {
       setConnectionStatus("error");
-      setTimeout(() => setConnectionStatus("unknown"), 3000);
     }
+    setTimeout(() => setConnectionStatus("unknown"), 3000);
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-950 text-white">
-      {/* Sidebar */}
+    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "#030712", color: "white", fontFamily: "sans-serif" }}>
       <Sidebar />
 
-      {/* Main content */}
-      <main className="flex-1 flex justify-center overflow-y-auto" style={{ marginLeft: "80px" }}>
-        <div className="max-w-4xl w-full px-10 py-12 space-y-10" >
+      <main style={{ 
+        flex: 1, 
+        marginLeft: "13em", 
+        display: "flex", 
+        justifyContent: "center", 
+        padding: "4em 2em",
+        overflowY: "auto"
+      }}>
+        <div style={{ width: "100%", maxWidth: "850px" }}>
+          
           {/* HEADER */}
-          <div className="space-y-2" style={{ justifyContent: "center", textAlign: "center", marginBottom: "1em" }}>
-            <h1 className="text-4xl font-bold flex items-center justify-center gap-2">
-              <Settings /> Settings
+          <header style={{ textAlign: "center", marginBottom: "3em" }}>
+            <h1 style={{ fontSize: "2.5rem", fontWeight: "800", display: "flex", alignItems: "center", justifyContent: "center", gap: "15px", margin: 0 }}>
+              <Settings size={36} /> Settings
             </h1>
-            <p className="text-gray-400">
-              Manage your account and preferences.
-            </p>
-          </div>
+            <p style={{ color: "#9ca3af", marginTop: "0.5em" }}>Manage your account and preferences.</p>
+          </header>
 
           {/* PROFILE SECTION */}
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 space-y-6">
-            <div className="flex items-center gap-2 pb-4 border-b border-gray-800">
-              <User size={20} className="text-indigo-400" />
-              <h2 className="text-xl font-semibold">Profile</h2>
+          <div style={cardStyle}>
+            <div style={sectionHeaderStyle}>
+              <User size={20} color="#818cf8" />
+              <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Profile</h2>
             </div>
-
-            <div className="grid gap-6" style={{ marginTop: "1em" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5em" }}>
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Name</label>
-                <input
-                  type="text"
-                  name="name"
-                  value={profile.name}
-                  onChange={handleProfileChange}
-                  className="w-full h-14 px-5 rounded-xl bg-gray-950 border border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition"
-                />
+                <label style={labelStyle}>Name</label>
+                <input type="text" name="name" value={profile.name} onChange={handleProfileChange} style={inputStyle} />
               </div>
-
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={profile.email}
-                  onChange={handleProfileChange}
-                  className="w-full h-14 px-5 rounded-xl bg-gray-950 border border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition"
-                />
+                <label style={labelStyle}>Email</label>
+                <input type="email" name="email" value={profile.email} onChange={handleProfileChange} style={inputStyle} />
               </div>
             </div>
           </div>
 
           {/* PREFERENCES SECTION */}
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 space-y-6">
-            <div className="flex items-center gap-2 pb-4 border-b border-gray-800">
-              <Mail size={20} className="text-indigo-400" />
-              <h2 className="text-xl font-semibold">Email Preferences</h2>
+          <div style={cardStyle}>
+            <div style={sectionHeaderStyle}>
+              <Mail size={20} color="#818cf8" />
+              <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Email Preferences</h2>
             </div>
-
-            <div className="grid gap-6" style={{ marginTop: "1em" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5em" }}>
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Email Signature</label>
-                <textarea
-                  name="emailSignature"
-                  value={preferences.emailSignature}
-                  onChange={handlePreferenceChange}
-                  className="w-full h-20 px-5 py-4 rounded-2xl bg-gray-950 border border-gray-700 resize-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition"
+                <label style={labelStyle}>Email Signature</label>
+                <textarea 
+                  name="emailSignature" 
+                  value={preferences.emailSignature} 
+                  onChange={handlePreferenceChange} 
+                  style={{ ...inputStyle, height: "100px", paddingTop: "1em", resize: "none" }} 
                 />
               </div>
-
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Default Tone</label>
-                <select
-                  name="defaultTone"
-                  value={preferences.defaultTone}
-                  onChange={handlePreferenceChange}
-                  className="w-full h-14 px-5 rounded-xl bg-gray-950 border border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition"
-                >
+                <label style={labelStyle}>Default Tone</label>
+                <select name="defaultTone" value={preferences.defaultTone} onChange={handlePreferenceChange} style={inputStyle}>
                   <option value="professional">Professional</option>
                   <option value="casual">Casual</option>
                   <option value="friendly">Friendly</option>
@@ -183,141 +179,68 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* OLLAMA AI CONFIGURATION SECTION */}
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 space-y-6">
-            <div className="flex items-center gap-2 pb-4 border-b border-gray-800">
-              <Cpu size={20} className="text-indigo-400" />
-              <h2 className="text-xl font-semibold">Ollama AI Configuration</h2>
+          {/* OLLAMA AI SECTION */}
+          <div style={cardStyle}>
+            <div style={sectionHeaderStyle}>
+              <Cpu size={20} color="#818cf8" />
+              <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Ollama AI Configuration</h2>
             </div>
-
-            <div className="grid gap-6" style={{ marginTop: "1em" }}>
-              {/* Base URL */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5em" }}>
               <div>
-                <label className="block text-sm text-gray-400 mb-2 flex items-center gap-2">
-                  <Database size={14} />
-                  Ollama Base URL
-                </label>
-                <input
-                  type="url"
-                  name="baseUrl"
-                  value={ollamaConfig.baseUrl}
-                  onChange={handleOllamaChange}
-                  placeholder="http://localhost:11434"
-                  className="w-full h-14 px-5 rounded-xl bg-gray-950 border border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition"
-                />
-              <p className="text-xs text-gray-500 mt-2">
-                Use <code>http://localhost:11434</code> for local Ollama or your cloud endpoint.<br />
-                For cloud Ollama (OpenAI-compatible), use format: <code>https://api.ollama.com/v1</code>
-              </p>
+                <label style={labelStyle}><Database size={14} /> Base URL</label>
+                <input type="url" name="baseUrl" value={ollamaConfig.baseUrl} onChange={handleOllamaChange} style={inputStyle} />
+                <p style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: "0.5em" }}>Example: http://localhost:11434</p>
               </div>
-
-              {/* Model */}
               <div>
-                <label className="block text-sm text-gray-400 mb-2 flex items-center gap-2">
-                  <Zap size={14} />
-                  Model
-                </label>
-                <input
-                  type="text"
-                  name="model"
-                  value={ollamaConfig.model}
-                  onChange={handleOllamaChange}
-                  placeholder="llama3.2"
-                  className="w-full h-14 px-5 rounded-xl bg-gray-950 border border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition"
-                />
-              <p className="text-xs text-gray-500 mt-2">
-                Recommended models: <code>tinyllama</code> (fastest), <code>llama3.2</code>, <code>mistral</code><br />
-                Currently installed: <code>tinyllama:latest</code>
-              </p>
+                <label style={labelStyle}><Zap size={14} /> Model</label>
+                <input type="text" name="model" value={ollamaConfig.model} onChange={handleOllamaChange} style={inputStyle} />
               </div>
-
-              {/* API Key */}
               <div>
-                <label className="block text-sm text-gray-400 mb-2 flex items-center gap-2">
-                  <Key size={14} />
-                  API Key (Optional)
-                </label>
-                <div className="relative">
-                  <input
-                    type={showApiKey ? "text" : "password"}
-                    name="apiKey"
-                    value={ollamaConfig.apiKey}
-                    onChange={handleOllamaChange}
-                    placeholder="Enter your Ollama Cloud API key"
-                    className="w-full h-14 px-5 rounded-xl bg-gray-950 border border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition pr-12"
+                <label style={labelStyle}><Key size={14} /> API Key (Optional)</label>
+                <div style={{ position: "relative" }}>
+                  <input 
+                    type={showApiKey ? "text" : "password"} 
+                    name="apiKey" 
+                    value={ollamaConfig.apiKey} 
+                    onChange={handleOllamaChange} 
+                    style={inputStyle} 
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                  <button 
+                    onClick={() => setShowApiKey(!showApiKey)} 
+                    style={{ position: "absolute", right: "15px", top: "25px", background: "none", border: "none", color: "#6b7280", cursor: "pointer" }}
                   >
                     {showApiKey ? "Hide" : "Show"}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Required for Ollama Cloud or other remote providers. Get your key from{" "}
-                  <a
-                    href="https://cloud.ollama.com/settings"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-indigo-400 hover:underline"
-                  >
-                    cloud.ollama.com
-                  </a>
-                </p>
               </div>
-
-              {/* Test Connection Button */}
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={testOllamaConnection}
-                  disabled={connectionStatus === "testing"}
-                  className="px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl transition flex items-center gap-2 disabled:opacity-50"
-                >
-                  <Zap size={16} className={connectionStatus === "testing" ? "animate-pulse" : ""} />
-                  {connectionStatus === "testing" ? "Testing..." : "Test Connection"}
+              
+              <div style={{ display: "flex", alignItems: "center", gap: "1.5em" }}>
+                <button onClick={testOllamaConnection} style={{ padding: "0.8em 1.5em", backgroundColor: "#374151", color: "white", border: "none", borderRadius: "10px", fontWeight: "bold", cursor: "pointer" }}>
+                  Test Connection
                 </button>
-                
-                {connectionStatus === "success" && (
-                  <span className="text-green-400 flex items-center gap-2">
-                    ✓ Connected successfully
-                  </span>
-                )}
-                {connectionStatus === "error" && (
-                  <span className="text-red-400 flex items-center gap-2">
-                    ✗ Connection failed
-                  </span>
-                )}
+                {connectionStatus === "success" && <span style={{ color: "#4ade80", fontSize: "0.9rem" }}>✓ Connected</span>}
+                {connectionStatus === "error" && <span style={{ color: "#f87171", fontSize: "0.9rem" }}>✗ Connection Failed</span>}
               </div>
             </div>
           </div>
 
-          {/* NOTIFICATIONS SECTION */}
-          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8 space-y-6">
-            <div className="flex items-center gap-2 pb-4 border-b border-gray-800">
-              <Bell size={20} className="text-indigo-400" />
-              <h2 className="text-xl font-semibold">Notifications</h2>
+          {/* NOTIFICATIONS */}
+          <div style={cardStyle}>
+            <div style={sectionHeaderStyle}>
+              <Bell size={20} color="#818cf8" />
+              <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Notifications</h2>
             </div>
-
-            <div style={{ marginTop: "1em" }}>
-              <label className="flex items-center gap-4 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="notifications"
-                  checked={preferences.notifications}
-                  onChange={handlePreferenceChange}
-                  className="w-5 h-5 rounded bg-gray-800 border-gray-700 text-indigo-600 focus:ring-indigo-500"
-                />
-                <span>Enable email notifications for new features and tips</span>
-              </label>
-            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: "12px", cursor: "pointer" }}>
+              <input type="checkbox" name="notifications" checked={preferences.notifications} onChange={handlePreferenceChange} style={{ width: "20px", height: "20px" }} />
+              <span style={{ fontSize: "1rem" }}>Enable email notifications for new features and tips</span>
+            </label>
           </div>
 
           {/* SAVE BUTTON */}
-          <div className="flex justify-end pt-4">
-            <button
-              onClick={saveSettings}
-              className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl transition"
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "4em" }}>
+            <button 
+              onClick={saveSettings} 
+              style={{ padding: "1em 2.5em", backgroundColor: "#4f46e5", color: "white", border: "none", borderRadius: "14px", fontWeight: "bold", cursor: "pointer", fontSize: "1rem" }}
             >
               Save Settings
             </button>
@@ -327,4 +250,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
