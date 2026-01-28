@@ -129,7 +129,7 @@ export default function ColdEmailGenerator() {
                 <div
                   key={i}
                   className="bg-gray-900 border border-gray-800 rounded-3xl p-7 space-y-4 animate-fadeUp"
-                  style={{ marginTop: "2em" }}
+                  style={{ marginTop: "2em", padding:"2em" }}
                 >
                   <div className="flex justify-between items-center">
                     <span className="text-indigo-400 text-sm font-medium">{email.style}</span>
@@ -139,6 +139,7 @@ export default function ColdEmailGenerator() {
                         copy(`Subject: ${email.subject}\n\n${email.body}`, i)
                       }
                       className="flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-xl transition"
+                      style={{padding:"0.9em"}}
                     >
                       {copiedIndex === i ? <Check size={16} /> : <Copy size={16} />}
                       {copiedIndex === i ? "Copied" : "Copy"}
