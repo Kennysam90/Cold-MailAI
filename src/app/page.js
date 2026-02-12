@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Mail, Sparkles, Copy, Check, Lock, Crown } from "lucide-react";
-import { motion } from "framer-motion";
-import Sidebar from "@/Component/sidebar";
+import { useAuth } from "@/Context/AuthContext";
 
 export default function ColdEmailGenerator() {
   const [companyUrl, setCompanyUrl] = useState("");
@@ -12,10 +11,13 @@ export default function ColdEmailGenerator() {
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState(null);
+  const { user } = useAuth();
   const [isPremium, setIsPremium] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("premium") === "true";
   });
+  const [billingError, setBillingError] = useState("");
+  const [showBillingModal, setShowBillingModal] = useState(false);
 
   const generateEmails = async () => {
     setLoading(true);
@@ -38,158 +40,153 @@ export default function ColdEmailGenerator() {
     setTimeout(() => setCopiedIndex(null), 1500);
   };
 
-  const upgrade = async () => {
+  useEffect(() => {
+    let active = true;
+    const loadPremium = async () => {
+      try {
+        const res = await fetch("/api/billing/status");
+        const data = await res.json();
+        if (active && data?.success) {
+          setIsPremium(data.data.isPremium);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("premium", data.data.isPremium ? "true" : "false");
+          }
+        }
+      } catch (e) {}
+    };
+    loadPremium();
+    return () => { active = false; };
+  }, []);
+
+  const upgradeWithStripe = async () => {
     try {
       const res = await fetch("/api/stripe/checkout", { method: "POST" });
-      if (!res.ok) throw new Error("Checkout request failed");
+
+      if (!res.ok) {
+        throw new Error("Checkout request failed");
+      }
+
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+
+      if (data.url) {
+        window.location.href = data.url;
+      }
     } catch (err) {
       console.error("Checkout error:", err);
-      alert("Payment system not ready. Check server logs.");
+      setBillingError("Stripe checkout failed. Check server logs.");
+    }
+  };
+
+  const upgradeWithPaystack = async () => {
+    try {
+      if (!user?.email) {
+        setBillingError("Please sign in to use Paystack.");
+        return;
+      }
+      const res = await fetch("/api/paystack/initialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, amount: 90000 }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Paystack init failed");
+      }
+
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      console.error("Paystack error:", err);
+      setBillingError("Paystack initialization failed.");
     }
   };
 
   const visibleEmails = isPremium ? emails : emails.slice(0, 3);
 
-  // Common UI Styles
-  const inputStyle = {
-    width: "100%",
-    height: "3.5em",
-    padding: "0 1.2em",
-    borderRadius: "12px",
-    backgroundColor: "#030712",
-    border: "1px solid #374151",
-    color: "white",
-    fontSize: "1rem",
-    marginBottom: "1.2em",
-    outline: "none"
-  };
-
-  const cardStyle = {
-    backgroundColor: "#111827",
-    border: "1px solid #1f2937",
-    borderRadius: "24px",
-    padding: "2.5em",
-    marginBottom: "2em",
-    textAlign: "left"
-  };
-
   return (
-    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "#030712", color: "white", fontFamily: "sans-serif" }}>
-      {/* Sidebar remains fixed */}
-      <Sidebar />
-
-      {/* Main Content pushed to the right of Sidebar and Centered */}
-      <main style={{ 
-        flex: 1, 
-        marginLeft: "13em", 
-        display: "flex", 
-        justifyContent: "center", 
-        padding: "4em 2em",
-        overflowY: "auto"
-      }}>
-        
-        <div style={{ width: "100%", maxWidth: "800px", textAlign: "center" }}>
-          
+    <div className="flex justify-center text-center">
+      <div className="max-w-4xl w-full px-4 sm:px-10 py-12 space-y-10">
           {/* HEADER */}
-          <header style={{ marginBottom: "3em" }}>
-            <h1 style={{ fontSize: "2.5rem", fontWeight: "800", marginBottom: "0.3em" }}>AI Cold Email Generator</h1>
-            <p style={{ color: "#9ca3af", fontSize: "1.1rem" }}>
+          <div
+            className="space-y-2"
+            style={{ justifyContent: "center", textAlign: "center", marginBottom: "1em" }}
+          >
+            {/* Added responsive text size for mobile headers */}
+            <h1 className="text-2xl sm:text-4xl font-bold">AI Cold Email Generator</h1>
+            <p className="text-gray-400">
               Generate human-sounding outreach emails that actually get replies.
             </p>
             {isPremium && (
-              <div style={{ color: "#4ade80", fontSize: "0.9rem", marginTop: "1em", display: "flex", justifyContent: "center", alignItems: "center", gap: "5px" }}>
+              <div className="text-green-400 text-sm font-medium flex justify-center gap-1 items-center">
                 <Crown size={14} /> Premium unlocked
               </div>
             )}
-          </header>
+          </div>
 
-          {/* FORM CARD */}
-          <div style={cardStyle}>
-            <label style={{ display: "block", marginBottom: "0.5em", color: "#9ca3af", fontSize: "0.9rem", fontWeight: "bold" }}>Target Company</label>
+          {/* FORM */}
+          <div
+            className="bg-gray-900 border border-gray-800 rounded-3xl p-8 space-y-6 transition-all"
+            style={{ padding: "2em" }}
+          >
             <input
-              style={inputStyle}
+              className="w-full h-14 px-5 rounded-xl bg-gray-950 border border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition"
               placeholder="Company URL or company name"
               onChange={(e) => setCompanyUrl(e.target.value)}
+              style={{ marginBottom: "1em" }}
             />
 
-            <label style={{ display: "block", marginBottom: "0.5em", color: "#9ca3af", fontSize: "0.9rem", fontWeight: "bold" }}>Recipient</label>
             <input
-              style={inputStyle}
+              className="w-full h-14 px-5 rounded-xl bg-gray-950 border border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition"
               placeholder="Recipient name (optional)"
               onChange={(e) => setTargetName(e.target.value)}
+              style={{ marginBottom: "1em" }}
             />
 
-            <label style={{ display: "block", marginBottom: "0.5em", color: "#9ca3af", fontSize: "0.9rem", fontWeight: "bold" }}>Your Offer</label>
             <textarea
-              style={{ ...inputStyle, height: "100px", paddingTop: "1em", resize: "none" }}
+              className="w-full h-20 px-5 py-4 rounded-2xl bg-gray-950 border border-gray-700 resize-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition"
               placeholder="Describe your offer..."
               onChange={(e) => setYourOffer(e.target.value)}
+              style={{ marginBottom: "1em" }}
             />
 
             <button
               onClick={generateEmails}
               disabled={loading}
-              style={{
-                width: "100%",
-                height: "3.5em",
-                borderRadius: "16px",
-                backgroundColor: "#4f46e5",
-                color: "white",
-                border: "none",
-                fontSize: "1.1rem",
-                fontWeight: "bold",
-                cursor: loading ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "10px",
-                transition: "0.3s",
-                opacity: loading ? 0.7 : 1
-              }}
+              className="w-full h-14 rounded-2xl bg-indigo-600 hover:bg-indigo-700 flex items-center justify-center gap-2 text-lg transition"
             >
-              <Sparkles size={20} />
+              <Sparkles />
               {loading ? "Generating..." : "Generate Emails"}
             </button>
           </div>
 
           {/* EMAIL RESULTS */}
           {visibleEmails.length > 0 && (
-            <div style={{ marginTop: "3em" }}>
-              <h2 style={{ textAlign: "left", marginBottom: "1em", fontSize: "1.5rem" }}>Generated Emails</h2>
+            <div className="space-y-6" style={{ marginTop: "2em" }}>
               {visibleEmails.map((email, i) => (
-                <div key={i} style={cardStyle}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5em" }}>
-                    <span style={{ color: "#818cf8", fontWeight: "bold", textTransform: "uppercase", fontSize: "0.8rem", letterSpacing: "1px" }}>
-                      {email.style} Style
-                    </span>
+                <div
+                  key={i}
+                  className="bg-gray-900 border border-gray-800 rounded-3xl p-7 space-y-4 animate-fadeUp"
+                  style={{ marginTop: "2em" }}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-indigo-400 text-sm font-medium">{email.style}</span>
 
                     <button
-                      onClick={() => copy(`Subject: ${email.subject}\n\n${email.body}`, i)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        backgroundColor: "#1f2937",
-                        color: "white",
-                        padding: "0.6em 1.2em",
-                        borderRadius: "10px",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "0.85rem"
-                      }}
+                      onClick={() =>
+                        copy(`Subject: ${email.subject}\n\n${email.body}`, i)
+                      }
+                      className="flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-xl transition"
                     >
-                      {copiedIndex === i ? <Check size={16} color="#4ade80" /> : <Copy size={16} />}
+                      {copiedIndex === i ? <Check size={16} /> : <Copy size={16} />}
                       {copiedIndex === i ? "Copied" : "Copy"}
                     </button>
                   </div>
 
-                  <p style={{ fontWeight: "bold", fontSize: "1.2rem", marginBottom: "1em", borderBottom: "1px solid #1f2937", paddingBottom: "0.5em" }}>
-                    {email.subject}
-                  </p>
+                  <p className="font-semibold text-lg" style={{ textAlign: "left" }}>{email.subject}</p>
 
-                  <p style={{ color: "#d1d5db", whiteSpace: "pre-line", lineHeight: "1.6", fontSize: "1rem" }}>
+                  <p className="text-gray-300 whitespace-pre-line leading-relaxed" style={{ textAlign: "left" }}>
                     {email.body}
                   </p>
                 </div>
@@ -199,38 +196,56 @@ export default function ColdEmailGenerator() {
 
           {/* PREMIUM LOCK */}
           {!isPremium && emails.length > 3 && (
-            <div style={{ 
-              background: "linear-gradient(to r, #4f46e5, #9333ea)", 
-              padding: "3em", 
-              borderRadius: "24px", 
-              marginTop: "2em",
-              textAlign: "center"
-            }}>
-              <h3 style={{ fontSize: "1.8rem", fontWeight: "bold", display: "flex", justifyContent: "center", alignItems: "center", gap: "10px" }}>
+            <div
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 p-8 rounded-3xl text-center space-y-3"
+              style={{ marginTop: "2em" }}
+            >
+              <h3 className="text-2xl font-bold flex justify-center gap-2">
                 <Lock /> Premium Required
               </h3>
-              <p style={{ margin: "1em 0", opacity: 0.9 }}>
+              <p className="text-sm opacity-90">
                 Unlock all 30 emails, tone control, follow-ups & export.
               </p>
+              {billingError && <p className="text-xs text-red-200">{billingError}</p>}
               <button
-                onClick={upgrade}
-                style={{
-                  backgroundColor: "rgba(0,0,0,0.3)",
-                  color: "white",
-                  padding: "1em 2em",
-                  borderRadius: "12px",
-                  border: "none",
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                  marginTop: "1em"
-                }}
+                onClick={() => setShowBillingModal(true)}
+                className="mt-3 bg-black/30 hover:bg-black/40 px-8 py-3 rounded-xl transition"
               >
-                Unlock Premium (Demo)
+                Choose Payment Provider
               </button>
             </div>
           )}
-        </div>
-      </main>
+          {showBillingModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm text-left">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-lg font-bold">Select Provider</h4>
+                  <button
+                    onClick={() => setShowBillingModal(false)}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <p className="text-sm text-gray-400 mb-4">Choose your payment provider to continue.</p>
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => { setShowBillingModal(false); upgradeWithStripe(); }}
+                    className="bg-indigo-600 hover:bg-indigo-700 px-4 py-3 rounded-xl transition text-white"
+                  >
+                    Pay with Stripe
+                  </button>
+                  <button
+                    onClick={() => { setShowBillingModal(false); upgradeWithPaystack(); }}
+                    className="bg-gray-800 hover:bg-gray-700 px-4 py-3 rounded-xl transition text-white"
+                  >
+                    Pay with Paystack
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+      </div>
     </div>
   );
 }

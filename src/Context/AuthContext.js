@@ -6,7 +6,7 @@ import { useSession, signIn, signOut } from "next-auth/react";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const { data: session, loading } = useSession();
+  const { data: session, status } = useSession();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -19,7 +19,7 @@ export function AuthProvider({ children }) {
         provider: session.user.provider || "oauth",
         createdAt: new Date().toISOString(),
       });
-    } else if (!loading && !session) {
+    } else if (status !== "loading" && !session) {
       // Check for local auth fallback
       const savedUser = localStorage.getItem("authUser");
       if (savedUser) {
@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
         setUser(null);
       }
     }
-  }, [session, loading]);
+  }, [session, status]);
 
   const login = (email, password) => {
     return new Promise((resolve, reject) => {
@@ -106,7 +106,7 @@ export function AuthProvider({ children }) {
         logout,
         loginWithGoogle,
         loginWithGithub,
-        loading,
+        loading: status === "loading",
       }}
     >
       {children}
@@ -121,4 +121,3 @@ export function useAuth() {
   }
   return context;
 }
-

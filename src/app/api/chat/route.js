@@ -1,4 +1,10 @@
 import { NextResponse } from 'next/server';
+import { prisma } from "@/lib/prisma";
+import { getWorkspaceContext } from "@/lib/workspace";
+import { getOrCreateSession, appendMessage, getRecentMessages, getMemory, setMemory } from "@/lib/chat-store";
+import { requireAuth } from "@/lib/require-auth";
+import { getOllamaConfigForWorkspace } from "@/lib/ai-config";
+import crypto from "crypto";
 
 function classifyIntent(text) {
   const t = text.toLowerCase();
@@ -72,15 +78,35 @@ async function getBestModel(preferredModel, baseUrl) {
 // API handler
 export async function POST(req) {
   try {
-    const { messages } = await req.json();
-    const lastUserMessage = messages[messages.length - 1].content;
+    const auth = await requireAuth();
+    if (!auth) {
+      const url = new URL("/auth", req.url);
+      url.searchParams.set("callbackUrl", "/chat");
+      return NextResponse.redirect(url);
+    }
+
+    const reqBody = await req.json();
+    const { messages = [], sessionId = null } = reqBody;
+    const lastUserMessage = messages[messages.length - 1]?.content || "";
+    const session = await getOrCreateSession(sessionId);
+    const memory = await getMemory(session.id);
 
     const { intent, confidence } = classifyIntent(lastUserMessage);
 
     let systemPrompt = `
-    You are an intelligent assistant.
+    You are an intelligent assistant for ColdMailAI.
     Think step by step before answering.
     Be clear, practical, and structured.
+
+    If you need to perform an action, respond ONLY with:
+    TOOL_CALL: {"name":"tool_name","args":{...}}
+
+    Available tools:
+    - create_campaign { name, leads, website, status }
+    - update_campaign_status { id, status }
+    - list_campaigns { limit }
+    - get_stats {}
+    - invite_user { email, role }
     `;
 
     if (confidence < 1) {
@@ -125,16 +151,47 @@ export async function POST(req) {
       `;
     }
 
-    const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-    const preferredModel = process.env.OLLAMA_MODEL || "tinyllama";
-    const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
+    const { workspace } = await getWorkspaceContext();
+    const ollamaConfig = await getOllamaConfigForWorkspace(workspace.id, prisma);
+    const OLLAMA_BASE_URL = ollamaConfig.baseUrl || "http://localhost:11434";
+    const preferredModel = ollamaConfig.model || "tinyllama";
+    const OLLAMA_API_KEY = ollamaConfig.apiKey;
 
     const useOpenAI = isOpenAICompatible(OLLAMA_BASE_URL);
     
     // Auto-detect best available model
     const model = await getBestModel(preferredModel, OLLAMA_BASE_URL);
     
-    let endpoint, headers, body;
+    // Fetch context for RAG
+    const [campaigns, templates, stats] = await Promise.all([
+      prisma.campaign.findMany({
+        where: { workspaceId: workspace.id },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      prisma.template.findMany({
+        where: { workspaceId: workspace.id },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+      }),
+      prisma.campaign.count({ where: { workspaceId: workspace.id } }),
+    ]);
+
+    const contextBlock = `
+Context:
+Recent campaigns: ${campaigns.map(c => `${c.name} (${c.status}, ${c.leads} leads)`).join("; ") || "none"}
+Templates: ${templates.map(t => t.name).join(", ") || "none"}
+Total campaigns: ${stats}
+Memory: ${memory || "none"}
+`;
+
+    // Persist user message
+    await appendMessage(session.id, "USER", lastUserMessage);
+    
+    // Normalize roles for frontend
+    const normalizeRole = (role) => role.toLowerCase();
+
+    let endpoint, headers, payload;
 
     if (useOpenAI) {
       // OpenAI-compatible format
@@ -143,10 +200,10 @@ export async function POST(req) {
         "Content-Type": "application/json",
         ...(OLLAMA_API_KEY && { "Authorization": `Bearer ${OLLAMA_API_KEY}` }),
       };
-      body = JSON.stringify({
+      payload = JSON.stringify({
         model: model,
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: systemPrompt + "\n" + contextBlock },
           ...messages.slice(-8),
         ],
         max_tokens: 1000,
@@ -160,10 +217,10 @@ export async function POST(req) {
         "Content-Type": "application/json",
         ...(OLLAMA_API_KEY && !useOpenAI && { "Authorization": `Bearer ${OLLAMA_API_KEY}` }),
       };
-      body = JSON.stringify({
+      payload = JSON.stringify({
         model: model,
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: systemPrompt + "\n" + contextBlock },
           ...messages.slice(-8),
         ],
         stream: false,
@@ -176,7 +233,7 @@ export async function POST(req) {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: headers,
-      body: body,
+      body: payload,
     });
 
     if (!res.ok) {
@@ -196,9 +253,110 @@ export async function POST(req) {
       reply = data.message?.content || data.response || "No response from AI";
     }
 
+    // Tool call handling
+    const toolMatch = reply.match(/^TOOL_CALL:\s*(\{.*\})/s);
+    if (toolMatch) {
+      let toolResult = null;
+      try {
+        const toolCall = JSON.parse(toolMatch[1]);
+        const { name, args } = toolCall || {};
+
+        if (name === "create_campaign") {
+          const created = await prisma.campaign.create({
+            data: {
+              workspaceId: workspace.id,
+              name: args.name,
+              leads: parseInt(args.leads) || 0,
+              website: args.website || null,
+              status: args.status || "DRAFT",
+            },
+          });
+          toolResult = { ok: true, campaign: created };
+        } else if (name === "update_campaign_status") {
+          const updated = await prisma.campaign.update({
+            where: { id: args.id },
+            data: { status: args.status },
+          });
+          toolResult = { ok: true, campaign: updated };
+        } else if (name === "list_campaigns") {
+          const items = await prisma.campaign.findMany({
+            where: { workspaceId: workspace.id },
+            orderBy: { createdAt: "desc" },
+            take: Math.min(20, Math.max(1, args?.limit || 5)),
+          });
+          toolResult = { ok: true, campaigns: items };
+        } else if (name === "get_stats") {
+          const count = await prisma.campaign.count({ where: { workspaceId: workspace.id } });
+          toolResult = { ok: true, campaigns: count };
+        } else if (name === "invite_user") {
+          const token = crypto.randomUUID();
+          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          const invite = await prisma.workspaceInvite.create({
+            data: {
+              workspaceId: workspace.id,
+              email: args.email,
+              role: args.role || "MEMBER",
+              token,
+              expiresAt,
+            },
+          });
+          toolResult = { ok: true, invite };
+        } else {
+          toolResult = { ok: false, error: "Unknown tool" };
+        }
+      } catch (e) {
+        toolResult = { ok: false, error: e.message };
+      }
+
+      // Follow-up to craft a natural response
+      const toolResponsePrompt = `
+Tool result:
+${JSON.stringify(toolResult)}
+
+Write a brief, helpful response to the user based on the tool result.
+`;
+      const toolBody = useOpenAI
+        ? JSON.stringify({ model, messages: [{ role: "user", content: toolResponsePrompt }], max_tokens: 200, temperature: 0.3 })
+        : JSON.stringify({ model, prompt: toolResponsePrompt, stream: false, options: { temperature: 0.3 } });
+
+      const toolRes = await fetch(endpoint, { method: "POST", headers, body: toolBody });
+      if (toolRes.ok) {
+        const toolData = await toolRes.json();
+        reply = useOpenAI ? toolData.choices[0].message.content : toolData.response;
+      }
+    }
+
+    // Save assistant reply
+    await appendMessage(session.id, "ASSISTANT", reply);
+
+    // Simple memory update every 10 messages
+    const recent = await getRecentMessages(session.id, 20);
+    if (recent.length >= 10) {
+      const summaryPrompt = `
+Summarize the conversation in 4-6 bullet points. Focus on user goals and preferences.
+Conversation:
+${recent.map(m => `${m.role}: ${m.content}`).join("\n")}
+`;
+      // Use same model to summarize (non-streaming)
+      const summaryBody = useOpenAI
+        ? JSON.stringify({ model, messages: [{ role: "user", content: summaryPrompt }], max_tokens: 200, temperature: 0.2 })
+        : JSON.stringify({ model, prompt: summaryPrompt, stream: false, options: { temperature: 0.2 } });
+
+      const summaryRes = await fetch(endpoint, { method: "POST", headers, body: summaryBody });
+      if (summaryRes.ok) {
+        const summaryData = await summaryRes.json();
+        const summaryText = useOpenAI
+          ? summaryData.choices[0].message.content
+          : summaryData.response;
+        await setMemory(session.id, summaryText.trim());
+      }
+    }
+
     return NextResponse.json({
       reply: reply,
       model: model,
+      sessionId: session.id,
+      role: "assistant",
     });
 
   } catch (err) {
@@ -209,4 +367,3 @@ export async function POST(req) {
     );
   }
 }
-

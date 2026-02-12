@@ -2,7 +2,6 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Send } from "lucide-react";
-import Sidebar from "@/Component/sidebar";
 
 export default function ChatPage() {
   const [messages, setMessages] = useState([
@@ -12,6 +11,7 @@ export default function ChatPage() {
     },
   ]);
   const [input, setInput] = useState("");
+  const [sessionId, setSessionId] = useState(null);
   const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom
@@ -34,48 +34,37 @@ export default function ChatPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: updatedMessages }),
+        body: JSON.stringify({ messages: updatedMessages, sessionId }),
       });
 
       const data = await res.json();
 
+      if (data.sessionId) setSessionId(data.sessionId);
       setMessages(prev => [
         ...prev.slice(0, -1),
         { role: "assistant", content: data.reply },
       ]);
     } catch (err) {
+      console.error("Chat error:", err);
       setMessages(prev => [
         ...prev.slice(0, -1),
         {
           role: "assistant",
-          content: "⚠️ Local AI not responding. Is Ollama running?",
+          content: "⚠️ Error: " + (err.message || "Failed to get response"),
         },
       ]);
     }
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "black", color: "white", fontFamily: "sans-serif" }}>
-      {/* Sidebar remains fixed */}
-      <Sidebar />
-
-      {/* Main Container - Offsets the sidebar and fills the space */}
-      <main style={{ 
-        flex: 1, 
-        marginLeft: "13em", 
+    <div style={{ display: "flex", justifyContent: "center", color: "white", fontFamily: "sans-serif" }}>
+      <div style={{ 
+        width: "100%", 
+        maxWidth: "800px", 
         display: "flex", 
-        justifyContent: "center", 
-        height: "100vh" 
+        flexDirection: "column", 
+        minHeight: "calc(100vh - 6rem)"
       }}>
-        
-        {/* Chat Box Container */}
-        <div style={{ 
-          width: "100%", 
-          maxWidth: "800px", 
-          display: "flex", 
-          flexDirection: "column", 
-          height: "100%" 
-        }}>
 
           {/* Header */}
           <div style={{ 
@@ -123,7 +112,7 @@ export default function ChatPage() {
           </div>
 
           {/* Input Area */}
-          <div style={{ padding: "1.5em 2em 3em 2em" }}>
+        <div style={{ padding: "1.5em 2em 3em 2em", marginTop: "auto" }}>
             <div style={{
               display: "flex",
               alignItems: "center",
@@ -171,8 +160,7 @@ export default function ChatPage() {
             </div>
           </div>
 
-        </div>
-      </main>
+      </div>
     </div>
   );
 }

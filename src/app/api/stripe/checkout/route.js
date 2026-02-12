@@ -1,8 +1,12 @@
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
+import { getWorkspaceContext } from "@/lib/workspace";
+import { prisma } from "@/lib/prisma";
 
 export async function POST() {
-  console.log("Stripe key loaded:", process.env.STRIPE_SECRET_KEY);
+  const auth = await requireAuth();
+  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json(
@@ -14,6 +18,7 @@ export async function POST() {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
   try {
+    const { workspace, session: userSession } = await getWorkspaceContext();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
@@ -28,8 +33,27 @@ export async function POST() {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.NEXT_PUBLIC_URL}/success`,
+      customer_email: userSession?.user?.email || undefined,
+      client_reference_id: workspace.id,
+      metadata: { workspaceId: workspace.id },
+      success_url: `${process.env.NEXT_PUBLIC_URL}/success?provider=stripe`,
       cancel_url: `${process.env.NEXT_PUBLIC_URL}/`,
+    });
+
+    await prisma.billing.upsert({
+      where: { workspaceId: workspace.id },
+      update: {
+        provider: "STRIPE",
+        planName: "Premium",
+        status: "pending",
+      },
+      create: {
+        workspaceId: workspace.id,
+        provider: "STRIPE",
+        planName: "Premium",
+        status: "pending",
+        renewsAt: null,
+      },
     });
 
     return NextResponse.json({ url: session.url });

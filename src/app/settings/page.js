@@ -1,21 +1,15 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Sidebar from "@/Component/sidebar";
 import { Settings, User, Mail, Key, Bell, Shield, Database, Cpu, Zap } from "lucide-react";
 
 export default function SettingsPage() {
-  const [profile, setProfile] = useState({
-    name: "John Doe",
-    email: "john@example.com",
-  });
-
+  const [profile, setProfile] = useState({ name: "John Doe", email: "john@example.com" });
   const [preferences, setPreferences] = useState({
     emailSignature: "Best regards,\nJohn Doe",
     defaultTone: "professional",
     notifications: true,
   });
-
   const [ollamaConfig, setOllamaConfig] = useState({
     baseUrl: "http://localhost:11434",
     model: "tinyllama",
@@ -24,80 +18,77 @@ export default function SettingsPage() {
 
   const [showApiKey, setShowApiKey] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("unknown");
+  const [billingStatus, setBillingStatus] = useState(null);
+
+  // Reusable Style Objects
+  const styles = {
+    container: { display: "flex", justifyContent: "center", color: "#ffffff" },
+    main: { width: "100%", display: "flex", justifyContent: "center", overflowY: "auto" },
+    contentWrapper: { maxWidth: "56rem", width: "100%", padding: "3rem 2.5rem", display: "flex", flexDirection: "column", gap: "2.5rem" },
+    section: { backgroundColor: "#111827", border: "1px solid #1f2937", borderRadius: "1.5rem", padding: "2rem", display: "flex", flexDirection: "column", gap: "1.5rem" },
+    sectionHeader: { display: "flex", alignItems: "center", gap: "0.5rem", paddingBottom: "1rem", borderBottom: "1px solid #1f2937" },
+    inputLabel: { display: "block", fontSize: "0.875rem", color: "#9ca3af", marginBottom: "0.5rem" },
+    inputField: { width: "100%", height: "3.5rem", padding: "0 1.25rem", borderRadius: "0.75rem", backgroundColor: "#030712", border: "1px solid #374151", color: "white", outline: "none" },
+    textareaField: { width: "100%", height: "5rem", padding: "1rem 1.25rem", borderRadius: "1rem", backgroundColor: "#030712", border: "1px solid #374151", color: "white", outline: "none", resize: "none" },
+    buttonPrimary: { padding: "0.75rem 2rem", backgroundColor: "#4f46e5", color: "white", borderRadius: "0.75rem", border: "none", cursor: "pointer", transition: "0.2s" },
+    buttonSecondary: { padding: "0.75rem 1.5rem", backgroundColor: "#1f2937", color: "white", borderRadius: "0.75rem", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem" },
+    hintText: { fontSize: "0.75rem", color: "#6b7280", marginTop: "0.5rem" }
+  };
 
   useEffect(() => {
-    const saved = localStorage.getItem("ollamaConfig");
-    if (saved) {
+    const loadConfig = async () => {
       try {
-        const parsed = JSON.parse(saved);
-        const validModels = ["tinyllama", "llama3.2", "mistral", "codellama", "llama2"];
-        if (!parsed.model || !validModels.some(m => parsed.model.toLowerCase().includes(m.toLowerCase()))) {
-          parsed.model = "tinyllama";
-          localStorage.setItem("ollamaConfig", JSON.stringify(parsed));
+        const res = await fetch("/api/settings/ollama");
+        const data = await res.json();
+        if (data?.success && data.data) {
+          setOllamaConfig({
+            baseUrl: data.data.baseUrl || "http://localhost:11434",
+            model: data.data.model || "tinyllama",
+            apiKey: data.data.apiKey || "",
+          });
         }
-        setOllamaConfig(parsed);
       } catch (e) {
-        console.error("Failed to parse saved Ollama config:", e);
+        console.error("Failed to load Ollama config:", e);
       }
-    }
+    };
+    loadConfig();
   }, []);
 
-  // --- Inline Style Objects ---
-  const cardStyle = {
-    backgroundColor: "#111827",
-    border: "1px solid #1f2937",
-    borderRadius: "24px",
-    padding: "2.5em",
-    marginBottom: "2em",
-    textAlign: "left"
-  };
+  useEffect(() => {
+    const loadBilling = async () => {
+      try {
+        const res = await fetch("/api/billing/status");
+        const data = await res.json();
+        if (data?.success) {
+          setBillingStatus(data.data);
+        }
+      } catch (e) {}
+    };
+    loadBilling();
+  }, []);
 
-  const inputStyle = {
-    width: "100%",
-    height: "3.5em",
-    padding: "0 1.2em",
-    borderRadius: "12px",
-    backgroundColor: "#030712",
-    border: "1px solid #374151",
-    color: "white",
-    fontSize: "1rem",
-    outline: "none",
-    marginTop: "0.5em"
-  };
-
-  const labelStyle = {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    fontSize: "0.9rem",
-    color: "#9ca3af",
-    fontWeight: "600"
-  };
-
-  const sectionHeaderStyle = {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    paddingBottom: "1em",
-    borderBottom: "1px solid #1f2937",
-    marginBottom: "1.5em"
-  };
-
-  // --- Handlers ---
   const handleProfileChange = (e) => setProfile({ ...profile, [e.target.name]: e.target.value });
   const handlePreferenceChange = (e) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     setPreferences({ ...preferences, [e.target.name]: value });
   };
-  const handleOllamaChange = (e) => {
-    const { name, value } = e.target;
-    setOllamaConfig(prev => ({ ...prev, [name]: value }));
-    setConnectionStatus("unknown");
-  };
-
-  const saveSettings = () => {
-    localStorage.setItem("ollamaConfig", JSON.stringify(ollamaConfig));
-    alert("Settings saved successfully!");
+  const handleOllamaChange = (e) => setOllamaConfig(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const saveSettings = async () => {
+    try {
+      const res = await fetch("/api/settings/ollama", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ollamaConfig),
+      });
+      const data = await res.json();
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to save settings");
+      }
+      alert("Settings saved successfully!");
+    } catch (e) {
+      console.error("Save settings error:", e);
+      alert("Failed to save settings.");
+    }
   };
 
   const testOllamaConnection = async () => {
@@ -112,64 +103,49 @@ export default function SettingsPage() {
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "#030712", color: "white", fontFamily: "sans-serif" }}>
-      <Sidebar />
-
-      <main style={{ 
-        flex: 1, 
-        marginLeft: "13em", 
-        display: "flex", 
-        justifyContent: "center", 
-        padding: "4em 2em",
-        overflowY: "auto"
-      }}>
-        <div style={{ width: "100%", maxWidth: "850px" }}>
-          
+    <div style={styles.container}>
+      <main style={styles.main}>
+        <div style={styles.contentWrapper}>
           {/* HEADER */}
-          <header style={{ textAlign: "center", marginBottom: "3em" }}>
-            <h1 style={{ fontSize: "2.5rem", fontWeight: "800", display: "flex", alignItems: "center", justifyContent: "center", gap: "15px", margin: 0 }}>
-              <Settings size={36} /> Settings
+          <div style={{ textAlign: "center", marginBottom: "1rem" }}>
+            <h1 style={{ fontSize: "2.25rem", fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", margin: 0 }}>
+              <Settings /> Settings
             </h1>
-            <p style={{ color: "#9ca3af", marginTop: "0.5em" }}>Manage your account and preferences.</p>
-          </header>
+            <p style={{ color: "#9ca3af", marginTop: "0.5rem" }}>Manage your account and preferences.</p>
+          </div>
 
           {/* PROFILE SECTION */}
-          <div style={cardStyle}>
-            <div style={sectionHeaderStyle}>
-              <User size={20} color="#818cf8" />
-              <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Profile</h2>
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>
+              <User size={20} style={{ color: "#818cf8" }} />
+              <h2 style={{ fontSize: "1.25rem", fontWeight: "600", margin: 0 }}>Profile</h2>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5em" }}>
+            <div style={{ display: "grid", gap: "1.5rem" }}>
               <div>
-                <label style={labelStyle}>Name</label>
-                <input type="text" name="name" value={profile.name} onChange={handleProfileChange} style={inputStyle} />
+                <label style={styles.inputLabel}>Name</label>
+                <input type="text" name="name" value={profile.name} onChange={handleProfileChange} style={styles.inputField} />
               </div>
               <div>
-                <label style={labelStyle}>Email</label>
-                <input type="email" name="email" value={profile.email} onChange={handleProfileChange} style={inputStyle} />
+                <label style={styles.inputLabel}>Email</label>
+                <input type="email" name="email" value={profile.email} onChange={handleProfileChange} style={styles.inputField} />
               </div>
             </div>
           </div>
 
-          {/* PREFERENCES SECTION */}
-          <div style={cardStyle}>
-            <div style={sectionHeaderStyle}>
-              <Mail size={20} color="#818cf8" />
-              <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Email Preferences</h2>
+          {/* EMAIL PREFERENCES */}
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>
+              <Mail size={20} style={{ color: "#818cf8" }} />
+              <h2 style={{ fontSize: "1.25rem", fontWeight: "600", margin: 0 }}>Email Preferences</h2>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5em" }}>
+            <div style={{ display: "grid", gap: "1.5rem" }}>
               <div>
-                <label style={labelStyle}>Email Signature</label>
-                <textarea 
-                  name="emailSignature" 
-                  value={preferences.emailSignature} 
-                  onChange={handlePreferenceChange} 
-                  style={{ ...inputStyle, height: "100px", paddingTop: "1em", resize: "none" }} 
-                />
+                <label style={styles.inputLabel}>Email Signature</label>
+                <textarea name="emailSignature" value={preferences.emailSignature} onChange={handlePreferenceChange} style={styles.textareaField} />
               </div>
               <div>
-                <label style={labelStyle}>Default Tone</label>
-                <select name="defaultTone" value={preferences.defaultTone} onChange={handlePreferenceChange} style={inputStyle}>
+                <label style={styles.inputLabel}>Default Tone</label>
+                <select name="defaultTone" value={preferences.defaultTone} onChange={handlePreferenceChange} style={styles.inputField}>
                   <option value="professional">Professional</option>
                   <option value="casual">Casual</option>
                   <option value="friendly">Friendly</option>
@@ -179,71 +155,91 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* OLLAMA AI SECTION */}
-          <div style={cardStyle}>
-            <div style={sectionHeaderStyle}>
-              <Cpu size={20} color="#818cf8" />
-              <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Ollama AI Configuration</h2>
+          {/* OLLAMA AI CONFIGURATION */}
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>
+              <Cpu size={20} style={{ color: "#818cf8" }} />
+              <h2 style={{ fontSize: "1.25rem", fontWeight: "600", margin: 0 }}>Ollama AI Configuration</h2>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5em" }}>
+            <div style={{ display: "grid", gap: "1.5rem" }}>
               <div>
-                <label style={labelStyle}><Database size={14} /> Base URL</label>
-                <input type="url" name="baseUrl" value={ollamaConfig.baseUrl} onChange={handleOllamaChange} style={inputStyle} />
-                <p style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: "0.5em" }}>Example: http://localhost:11434</p>
+                <label style={{ ...styles.inputLabel, display: "flex", alignItems: "center", gap: "0.5rem" }}><Database size={14} /> Ollama Base URL</label>
+                <input type="url" name="baseUrl" value={ollamaConfig.baseUrl} onChange={handleOllamaChange} style={styles.inputField} />
+                <p style={styles.hintText}>Use http://localhost:11434 for local Ollama.</p>
               </div>
+
               <div>
-                <label style={labelStyle}><Zap size={14} /> Model</label>
-                <input type="text" name="model" value={ollamaConfig.model} onChange={handleOllamaChange} style={inputStyle} />
+                <label style={{ ...styles.inputLabel, display: "flex", alignItems: "center", gap: "0.5rem" }}><Zap size={14} /> Model</label>
+                <input type="text" name="model" value={ollamaConfig.model} onChange={handleOllamaChange} style={styles.inputField} />
+                <p style={styles.hintText}>Recommended: tinyllama, llama3.2, mistral</p>
               </div>
+
               <div>
-                <label style={labelStyle}><Key size={14} /> API Key (Optional)</label>
+                <label style={{ ...styles.inputLabel, display: "flex", alignItems: "center", gap: "0.5rem" }}><Key size={14} /> API Key (Optional)</label>
                 <div style={{ position: "relative" }}>
-                  <input 
-                    type={showApiKey ? "text" : "password"} 
-                    name="apiKey" 
-                    value={ollamaConfig.apiKey} 
-                    onChange={handleOllamaChange} 
-                    style={inputStyle} 
-                  />
-                  <button 
-                    onClick={() => setShowApiKey(!showApiKey)} 
-                    style={{ position: "absolute", right: "15px", top: "25px", background: "none", border: "none", color: "#6b7280", cursor: "pointer" }}
-                  >
+                  <input type={showApiKey ? "text" : "password"} name="apiKey" value={ollamaConfig.apiKey} onChange={handleOllamaChange} style={{ ...styles.inputField, paddingRight: "3rem" }} />
+                  <button type="button" onClick={() => setShowApiKey(!showApiKey)} style={{ position: "absolute", right: "1rem", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#9ca3af", cursor: "pointer" }}>
                     {showApiKey ? "Hide" : "Show"}
                   </button>
                 </div>
               </div>
-              
-              <div style={{ display: "flex", alignItems: "center", gap: "1.5em" }}>
-                <button onClick={testOllamaConnection} style={{ padding: "0.8em 1.5em", backgroundColor: "#374151", color: "white", border: "none", borderRadius: "10px", fontWeight: "bold", cursor: "pointer" }}>
-                  Test Connection
+
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                <button onClick={testOllamaConnection} disabled={connectionStatus === "testing"} style={connectionStatus === "testing" ? { ...styles.buttonSecondary, opacity: 0.5 } : styles.buttonSecondary}>
+                  <Zap size={16} /> {connectionStatus === "testing" ? "Testing..." : "Test Connection"}
                 </button>
-                {connectionStatus === "success" && <span style={{ color: "#4ade80", fontSize: "0.9rem" }}>✓ Connected</span>}
-                {connectionStatus === "error" && <span style={{ color: "#f87171", fontSize: "0.9rem" }}>✗ Connection Failed</span>}
+                {connectionStatus === "success" && <span style={{ color: "#4ade80" }}>✓ Connected</span>}
+                {connectionStatus === "error" && <span style={{ color: "#f87171" }}>✗ Connection failed</span>}
               </div>
             </div>
           </div>
 
           {/* NOTIFICATIONS */}
-          <div style={cardStyle}>
-            <div style={sectionHeaderStyle}>
-              <Bell size={20} color="#818cf8" />
-              <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Notifications</h2>
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>
+              <Bell size={20} style={{ color: "#818cf8" }} />
+              <h2 style={{ fontSize: "1.25rem", fontWeight: "600", margin: 0 }}>Notifications</h2>
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: "12px", cursor: "pointer" }}>
-              <input type="checkbox" name="notifications" checked={preferences.notifications} onChange={handlePreferenceChange} style={{ width: "20px", height: "20px" }} />
-              <span style={{ fontSize: "1rem" }}>Enable email notifications for new features and tips</span>
+            <label style={{ display: "flex", alignItems: "center", gap: "1rem", cursor: "pointer" }}>
+              <input type="checkbox" name="notifications" checked={preferences.notifications} onChange={handlePreferenceChange} style={{ width: "1.25rem", height: "1.25rem" }} />
+              <span>Enable email notifications for new features and tips</span>
             </label>
           </div>
 
-          {/* SAVE BUTTON */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "4em" }}>
-            <button 
-              onClick={saveSettings} 
-              style={{ padding: "1em 2.5em", backgroundColor: "#4f46e5", color: "white", border: "none", borderRadius: "14px", fontWeight: "bold", cursor: "pointer", fontSize: "1rem" }}
-            >
-              Save Settings
-            </button>
+          {/* BILLING STATUS */}
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>
+              <Shield size={20} style={{ color: "#818cf8" }} />
+              <h2 style={{ fontSize: "1.25rem", fontWeight: "600", margin: 0 }}>Billing</h2>
+            </div>
+            {!billingStatus ? (
+              <p style={{ color: "#9ca3af", margin: 0 }}>Loading billing status…</p>
+            ) : (
+              <div style={{ display: "grid", gap: "0.75rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#9ca3af" }}>Plan</span>
+                  <span>{billingStatus.billing?.planName || "Free"}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#9ca3af" }}>Status</span>
+                  <span>{billingStatus.billing?.status || "inactive"}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#9ca3af" }}>Provider</span>
+                  <span>{billingStatus.billing?.provider || "-"}</span>
+                </div>
+                {billingStatus.billing?.currentPeriodEnd && (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#9ca3af" }}>Renews</span>
+                    <span>{new Date(billingStatus.billing.currentPeriodEnd).toLocaleDateString()}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: "1rem" }}>
+            <button onClick={saveSettings} style={styles.buttonPrimary}>Save Settings</button>
           </div>
         </div>
       </main>

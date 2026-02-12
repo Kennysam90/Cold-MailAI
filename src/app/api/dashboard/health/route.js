@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
-import { checkOllamaHealth, getOllamaConfig, getGoogleAIConfig } from '@/lib/ai-config';
+import { checkOllamaHealth, getGoogleAIConfig, getOllamaConfigForWorkspace } from '@/lib/ai-config';
+import { getWorkspaceContext } from '@/lib/workspace';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const service = searchParams.get('service') || 'all';
 
-    const ollamaConfig = getOllamaConfig();
+    const { workspace } = await getWorkspaceContext();
+    const ollamaConfig = await getOllamaConfigForWorkspace(workspace.id, prisma);
     const googleConfig = getGoogleAIConfig();
 
     const response = {
@@ -16,7 +19,10 @@ export async function GET(req) {
 
     // Check Ollama
     if (service === 'all' || service === 'ollama') {
-      const ollamaHealth = await checkOllamaHealth(ollamaConfig.baseUrl);
+      let ollamaHealth = await checkOllamaHealth(ollamaConfig.baseUrl, 3000);
+      if (!ollamaHealth.ok) {
+        ollamaHealth = await checkOllamaHealth(ollamaConfig.baseUrl, 6000);
+      }
       response.services.ollama = {
         status: ollamaHealth.ok ? 'online' : 'offline',
         baseUrl: ollamaConfig.baseUrl,
@@ -61,7 +67,8 @@ export async function POST(req) {
 
     if (action === 'test') {
       // Perform a quick test generation
-      const ollamaConfig = getOllamaConfig();
+      const { workspace } = await getWorkspaceContext();
+      const ollamaConfig = await getOllamaConfigForWorkspace(workspace.id, prisma);
       const health = await checkOllamaHealth(ollamaConfig.baseUrl);
 
       return NextResponse.json({
@@ -83,4 +90,3 @@ export async function POST(req) {
     );
   }
 }
-

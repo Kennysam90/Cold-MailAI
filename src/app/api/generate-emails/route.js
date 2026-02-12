@@ -1,24 +1,9 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-
-// Get AI configuration from environment
-function getAIConfig() {
-  const googleApiKey = process.env.GOOGLE_AI_API_KEY;
-  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-  const ollamaModel = process.env.OLLAMA_MODEL || "tinyllama";
-
-  return {
-    googleApiKey,
-    ollamaBaseUrl,
-    ollamaModel,
-    useGoogle: !!googleApiKey,
-  };
-}
-
-// Check if URL is for OpenAI-compatible API
-function isOpenAICompatible(baseUrl) {
-  return baseUrl.includes('/v1') || baseUrl.includes('openai');
-}
+import { getGoogleAIConfig, isOpenAICompatible, getOllamaConfigForWorkspace } from '@/lib/ai-config';
+import { prisma } from "@/lib/prisma";
+import { getWorkspaceContext } from "@/lib/workspace";
+import { requireAuth } from "@/lib/require-auth";
 
 // Get available models from Ollama
 async function getAvailableModels(baseUrl) {
@@ -59,12 +44,19 @@ async function getBestModel(preferredModel, baseUrl) {
   return available[0];
 }
 
+function getCurrentPeriod() {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59));
+  return { start, end };
+}
+
 // Generate a single email using Google Gemini
 async function generateSingleEmailWithGemini(params) {
-  const { companyUrl, targetName, yourOffer, tone, style, apiKey } = params;
+  const { companyUrl, targetName, yourOffer, tone, style, apiKey, model } = params;
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+  const geminiModel = genAI.getGenerativeModel({ model: model || "gemini-pro" });
 
   const prompt = `You are an expert cold email writer. Generate a personalized, compelling cold email with the following details:
 
@@ -83,7 +75,7 @@ Requirements:
 
 Return ONLY the email body, nothing else.`;
 
-  const result = await model.generateContent(prompt);
+  const result = await geminiModel.generateContent(prompt);
   const response = await result.response;
   return response.text();
 }
@@ -306,8 +298,17 @@ function generateTemplateFallback({ companyUrl, targetName, yourOffer }) {
 
 export async function POST(req) {
   // Always return valid JSON, even on error
+  let body = {};
   try {
-    const body = await req.json().catch(() => ({}));
+    const auth = await requireAuth();
+    if (!auth) {
+      const url = new URL("/auth", req.url);
+      url.searchParams.set("callbackUrl", "/");
+      return NextResponse.redirect(url);
+    }
+
+    const { workspace } = await getWorkspaceContext();
+    body = await req.json().catch(() => ({}));
     const { companyUrl, targetName, yourOffer } = body;
 
     if (!companyUrl || !yourOffer) {
@@ -321,29 +322,33 @@ export async function POST(req) {
       );
     }
 
-    const { baseUrl, model: preferredModel, apiKey } = getOllamaConfig();
-    const useOpenAI = isOpenAICompatible(baseUrl);
+    const ollamaConfig = await getOllamaConfigForWorkspace(workspace.id, prisma);
+    const googleConfig = getGoogleAIConfig();
+    const googleApiKey = googleConfig.apiKey;
+    const aiService = googleApiKey ? 'gemini' : 'ollama';
+    const { baseUrl: ollamaBaseUrl, model: preferredModel, apiKey: ollamaApiKey } = ollamaConfig;
+    const useOpenAI = isOpenAICompatible(ollamaBaseUrl);
     
-    // Check if Ollama is available
-    const healthEndpoint = useOpenAI 
-      ? `${baseUrl.replace(/\/$/, '')}/models`
-      : `${baseUrl}/api/tags`;
-    
+    // Check if Ollama is available (even if Gemini is preferred, so we can fallback)
     let ollamaAvailable = false;
+    const healthEndpoint = useOpenAI 
+      ? `${ollamaBaseUrl.replace(/\/$/, '')}/models`
+      : `${ollamaBaseUrl}/api/tags`;
+    
     try {
       const healthCheck = await fetch(healthEndpoint, { 
         signal: AbortSignal.timeout(3000),
-        headers: useOpenAI && apiKey 
-          ? { "Authorization": `Bearer ${apiKey}` }
+        headers: useOpenAI && ollamaApiKey 
+          ? { "Authorization": `Bearer ${ollamaApiKey}` }
           : {}
       });
       ollamaAvailable = healthCheck.ok;
     } catch (err) {
-      console.warn("AI service not available:", err.message);
+      console.warn("Ollama health check failed:", err.message);
       ollamaAvailable = false;
     }
-    
-    if (!ollamaAvailable) {
+
+    if (aiService === 'ollama' && !ollamaAvailable) {
       console.log("Using template fallback - Ollama not available");
       const fallback = generateTemplateFallback({ companyUrl, targetName, yourOffer });
       return NextResponse.json({ 
@@ -353,9 +358,10 @@ export async function POST(req) {
       });
     }
     
-    // Auto-detect best available model
-    const model = await getBestModel(preferredModel, baseUrl);
-    console.log(`Using model: ${model} (preferred: ${preferredModel})`);
+    // Auto-detect best available model for Ollama
+    const ollamaModel = ollamaAvailable ? await getBestModel(preferredModel, ollamaBaseUrl) : preferredModel;
+    const preferredLabel = aiService === 'ollama' ? preferredModel : googleConfig.model;
+    console.log(`Preferred service: ${aiService}, preferred model: ${preferredLabel}`);
     
     // Define tone and style combinations
     const combinations = [
@@ -365,10 +371,14 @@ export async function POST(req) {
       { tone: "Consultative", style: "Consultative" },
     ];
 
-    // Generate subject lines first
+    // Generate subject lines first (prefer Ollama if available)
     let subjects;
     try {
-      subjects = await generateSubjectLine({ companyUrl, targetName, yourOffer, model, baseUrl, apiKey });
+      if (ollamaAvailable) {
+        subjects = await generateSubjectLine({ companyUrl, targetName, yourOffer, model: ollamaModel, baseUrl: ollamaBaseUrl, apiKey: ollamaApiKey });
+      } else {
+        throw new Error("Ollama unavailable for subject lines");
+      }
     } catch (err) {
       console.error("Subject line generation failed:", err);
       subjects = [
@@ -382,6 +392,8 @@ export async function POST(req) {
 
     // Generate emails in parallel batches
     const emails = [];
+    let usedGemini = false;
+    let usedOllama = false;
 
     // Generate 30 emails (7-8 batches of 4 variations)
     for (let batch = 0; batch < 8; batch++) {
@@ -400,6 +412,7 @@ export async function POST(req) {
               tone,
               style,
               apiKey: googleApiKey,
+              model: googleConfig.model,
             }).catch(err => {
               console.error(`Error generating email ${batch * 4 + i}:`, err);
               return null;
@@ -413,8 +426,9 @@ export async function POST(req) {
               yourOffer,
               tone,
               style,
-              model,
+              model: ollamaModel,
               baseUrl: ollamaBaseUrl,
+              apiKey: ollamaApiKey,
             }).catch(err => {
               console.error(`Error generating email ${batch * 4 + i}:`, err);
               return null;
@@ -425,17 +439,43 @@ export async function POST(req) {
 
       const batchResults = await Promise.all(batchPromises);
       
-      batchResults.forEach((body, i) => {
+      for (let i = 0; i < batchResults.length; i++) {
+        let body = batchResults[i];
+        const index = (batch * 4 + i) % 4;
+
+        if (!body && aiService === 'gemini' && ollamaAvailable) {
+          // Fallback to Ollama if Gemini fails
+          try {
+            body = await generateSingleEmail({
+              companyUrl,
+              targetName,
+              yourOffer,
+              tone: combinations[index].tone,
+              style: combinations[index].style,
+              model: ollamaModel,
+              baseUrl: ollamaBaseUrl,
+              apiKey: ollamaApiKey,
+            });
+            usedOllama = true;
+          } catch (err) {
+            console.error(`Ollama fallback failed for email ${batch * 4 + i}:`, err);
+            body = null;
+          }
+        }
+
         if (body) {
-          const index = (batch * 4 + i) % 4;
+          if (aiService === 'gemini') usedGemini = true;
+          else usedOllama = true;
+
           emails.push({
             style: combinations[index].style,
             tone: combinations[index].tone,
             subject: subjects[index % subjects.length],
             body: body.trim(),
+            aiGenerated: true,
           });
         }
-      });
+      }
 
       if (emails.length >= 30) break;
     }
@@ -447,21 +487,42 @@ export async function POST(req) {
       emails.push(...templateEmails.emails.slice(0, remainingNeeded).map(e => ({ ...e, aiGenerated: false })));
     }
 
+    const sliced = emails.slice(0, 30);
+    const anyAi = sliced.some(e => e.aiGenerated);
+    const modelUsed = usedGemini ? googleConfig.model : usedOllama ? ollamaModel : "template";
+
+    try {
+      const { start, end } = getCurrentPeriod();
+      await prisma.usage.upsert({
+        where: { workspaceId: workspace.id },
+        update: { emailsGenerated: { increment: sliced.length } },
+        create: {
+          workspaceId: workspace.id,
+          periodStart: start,
+          periodEnd: end,
+          emailsGenerated: sliced.length,
+          limit: 500,
+        },
+      });
+      await prisma.activityLog.create({
+        data: {
+          workspaceId: workspace.id,
+          action: "emails.generated",
+          metadata: { count: sliced.length, aiGenerated: anyAi, model: modelUsed },
+        },
+      });
+    } catch (e) {
+      console.error("Usage tracking error:", e);
+    }
+
     return NextResponse.json({
-      emails: emails.slice(0, 30),
-      aiGenerated: true,
-      model: aiService === 'gemini' ? 'gemini-pro' : model,
+      emails: sliced,
+      aiGenerated: anyAi,
+      model: modelUsed,
     });
 
   } catch (err) {
     console.error("Email generation error:", err);
-    
-    // Try to get body again for fallback (since we consumed it)
-    let body = {};
-    try {
-      body = await req.json().catch(() => ({}));
-    } catch {}
-    
     const fallback = generateTemplateFallback({ 
       companyUrl: body.companyUrl || "", 
       targetName: body.targetName || "", 
@@ -475,4 +536,3 @@ export async function POST(req) {
     });
   }
 }
-

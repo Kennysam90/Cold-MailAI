@@ -1,0 +1,211 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String            @id @default(cuid())
+  email       String?           @unique
+  name        String?
+  createdAt   DateTime          @default(now())
+  memberships WorkspaceMember[]
+}
+
+model Workspace {
+  id          String            @id @default(cuid())
+  name        String
+  isPrivate   Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  members     WorkspaceMember[]
+  invites     WorkspaceInvite[]
+  campaigns   Campaign[]
+  templates   Template[]
+  activity    ActivityLog[]
+  usage       Usage?
+  billing     Billing?
+  settings    WorkspaceSettings?
+  chatSessions ChatSession[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        Role      @default(MEMBER)
+  createdAt   DateTime  @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model WorkspaceInvite {
+  id          String        @id @default(cuid())
+  workspaceId String
+  email       String
+  role        Role          @default(MEMBER)
+  token       String        @unique
+  status      InviteStatus  @default(PENDING)
+  createdAt   DateTime      @default(now())
+  expiresAt   DateTime
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Campaign {
+  id          String        @id @default(cuid())
+  workspaceId String
+  name        String
+  website     String?
+  status      CampaignStatus @default(DRAFT)
+  leads       Int           @default(0)
+  abEnabled   Boolean       @default(false)
+  abVariantA  String?
+  abVariantB  String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  events      CampaignEvent[]
+}
+
+model CampaignEvent {
+  id         String    @id @default(cuid())
+  campaignId String
+  type       EventType
+  meta       Json?
+  createdAt  DateTime  @default(now())
+
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model Template {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  subject     String
+  body        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Usage {
+  id          String    @id @default(cuid())
+  workspaceId String    @unique
+  periodStart DateTime
+  periodEnd   DateTime
+  emailsGenerated Int  @default(0)
+  limit       Int       @default(500)
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Billing {
+  id          String    @id @default(cuid())
+  workspaceId String    @unique
+  provider    BillingProvider
+  planName    String
+  status      String
+  renewsAt    DateTime?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  paystackCustomerCode String?
+  paystackSubscriptionCode String?
+  currentPeriodEnd     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceSettings {
+  id          String    @id @default(cuid())
+  workspaceId String    @unique
+  ollamaBaseUrl String?
+  ollamaModel  String?
+  ollamaApiKey String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  action      String
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model ChatSession {
+  id          String    @id @default(cuid())
+  workspaceId String
+  title       String?
+  memory      String?   // rolling summary
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages    ChatMessage[]
+}
+
+model ChatMessage {
+  id          String    @id @default(cuid())
+  sessionId   String
+  role        ChatRole
+  content     String
+  createdAt   DateTime  @default(now())
+
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+enum ChatRole {
+  SYSTEM
+  USER
+  ASSISTANT
+  TOOL
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum EventType {
+  GENERATED
+  SENT
+  OPENED
+  CLICKED
+  REPLIED
+  BOUNCED
+}
+
+enum BillingProvider {
+  STRIPE
+  PAYSTACK
+}

@@ -1,18 +1,8 @@
 import { NextResponse } from 'next/server';
-import { checkOllamaHealth } from '@/lib/ai-config';
-
-// In-memory storage for demo (in production, use a database)
-let dashboardData = {
-  totalGenerated: 1284,
-  totalLeads: 842,
-  avgOpenRate: 42.5,
-  ctr: 12.8,
-  campaigns: [
-    { id: 1, name: "SaaS Outreach - Q1", date: "2 hours ago", status: "Active", leads: 120, createdAt: new Date().toISOString() },
-    { id: 2, name: "Real Estate Agents", date: "Yesterday", status: "Draft", leads: 45, createdAt: new Date().toISOString() },
-    { id: 3, name: "Tech Founders NYC", date: "Jan 24, 2026", status: "Completed", leads: 300, createdAt: new Date().toISOString() },
-  ]
-};
+import { checkOllamaHealth, getOllamaConfigForWorkspace } from '@/lib/ai-config';
+import { computeStatsFromCampaigns } from '@/lib/dashboard-store';
+import { prisma } from '@/lib/prisma';
+import { getWorkspaceContext } from '@/lib/workspace';
 
 export async function GET(req) {
   try {
@@ -20,26 +10,26 @@ export async function GET(req) {
     const refresh = searchParams.get('refresh') === 'true';
 
     // Check Ollama health
-    const ollamaConfig = {
-      baseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
-    };
+    const { workspace } = await getWorkspaceContext();
+    const ollamaConfig = await getOllamaConfigForWorkspace(workspace.id, prisma);
     const health = await checkOllamaHealth(ollamaConfig.baseUrl);
-
-    // Calculate dynamic stats from campaigns
-    const totalLeads = dashboardData.campaigns.reduce((acc, curr) => acc + curr.leads, 0);
-    const activeCampaigns = dashboardData.campaigns.filter(c => c.status === 'Active').length;
+    const campaigns = await prisma.campaign.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: { createdAt: "desc" },
+    });
+    const { totalLeads, activeCampaigns, avgOpenRate, ctr } = computeStatsFromCampaigns(campaigns);
 
     return NextResponse.json({
       success: true,
       data: {
         stats: {
-          totalGenerated: dashboardData.totalGenerated,
+          totalGenerated: totalLeads,
           totalLeads: totalLeads,
           activeCampaigns: activeCampaigns,
-          avgOpenRate: dashboardData.avgOpenRate,
-          ctr: dashboardData.ctr,
+          avgOpenRate: avgOpenRate,
+          ctr: ctr,
         },
-        campaigns: dashboardData.campaigns,
+        campaigns: campaigns,
         system: {
           ollama: {
             status: health.ok ? 'online' : 'offline',
@@ -62,6 +52,7 @@ export async function POST(req) {
   try {
     const body = await req.json();
     const { action, campaign } = body;
+    const { workspace } = await getWorkspaceContext();
 
     switch (action) {
       case 'addCampaign':
@@ -71,16 +62,32 @@ export async function POST(req) {
             { status: 400 }
           );
         }
-        const newCampaign = {
-          id: Date.now(),
-          name: campaign.name,
-          date: 'Just now',
-          status: 'Draft',
-          leads: parseInt(campaign.leads) || 0,
-          createdAt: new Date().toISOString(),
-        };
-        dashboardData.campaigns.unshift(newCampaign);
-        dashboardData.totalGenerated += parseInt(campaign.leads) || 0;
+        const newCampaign = await prisma.campaign.create({
+          data: {
+            workspaceId: workspace.id,
+            name: campaign.name,
+            website: campaign.website || null,
+            status: "DRAFT",
+            leads: parseInt(campaign.leads) || 0,
+            abEnabled: !!campaign.abEnabled,
+            abVariantA: campaign.abVariantA || null,
+            abVariantB: campaign.abVariantB || null,
+          },
+        });
+        await prisma.campaignEvent.create({
+          data: {
+            campaignId: newCampaign.id,
+            type: "GENERATED",
+            meta: { count: parseInt(campaign.leads) || 0 },
+          },
+        });
+        await prisma.activityLog.create({
+          data: {
+            workspaceId: workspace.id,
+            action: "campaign.created",
+            metadata: { campaignId: newCampaign.id, name: newCampaign.name },
+          },
+        });
         return NextResponse.json({ success: true, campaign: newCampaign });
 
       case 'updateStatus':
@@ -90,15 +97,27 @@ export async function POST(req) {
             { status: 400 }
           );
         }
-        const idx = dashboardData.campaigns.findIndex(c => c.id === campaign.id);
-        if (idx !== -1) {
-          dashboardData.campaigns[idx].status = campaign.status;
-          return NextResponse.json({ success: true, campaign: dashboardData.campaigns[idx] });
+        const updated = await prisma.campaign.update({
+          where: { id: campaign.id },
+          data: { status: campaign.status },
+        });
+        if (campaign.status === "ACTIVE") {
+          await prisma.campaignEvent.create({
+            data: {
+              campaignId: updated.id,
+              type: "SENT",
+              meta: { count: updated.leads || 0 },
+            },
+          });
         }
-        return NextResponse.json(
-          { success: false, error: 'Campaign not found' },
-          { status: 404 }
-        );
+        await prisma.activityLog.create({
+          data: {
+            workspaceId: workspace.id,
+            action: "campaign.status_updated",
+            metadata: { campaignId: updated.id, status: updated.status },
+          },
+        });
+        return NextResponse.json({ success: true, campaign: updated });
 
       case 'deleteCampaign':
         if (!campaign?.id) {
@@ -107,17 +126,24 @@ export async function POST(req) {
             { status: 400 }
           );
         }
-        dashboardData.campaigns = dashboardData.campaigns.filter(c => c.id !== campaign.id);
+        await prisma.campaign.delete({ where: { id: campaign.id } });
+        await prisma.activityLog.create({
+          data: {
+            workspaceId: workspace.id,
+            action: "campaign.deleted",
+            metadata: { campaignId: campaign.id },
+          },
+        });
         return NextResponse.json({ success: true });
 
       case 'reset':
-        dashboardData = {
-          totalGenerated: 0,
-          totalLeads: 0,
-          avgOpenRate: 0,
-          ctr: 0,
-          campaigns: []
-        };
+        await prisma.campaign.deleteMany({ where: { workspaceId: workspace.id } });
+        await prisma.activityLog.create({
+          data: {
+            workspaceId: workspace.id,
+            action: "campaign.reset",
+          },
+        });
         return NextResponse.json({ success: true });
 
       default:
@@ -134,4 +160,3 @@ export async function POST(req) {
     );
   }
 }
-

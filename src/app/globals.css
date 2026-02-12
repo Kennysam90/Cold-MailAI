@@ -3,6 +3,30 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --sidebar-width: 13em;
+  --sidebar-width-mobile: 16rem;
+}
+
+/* Page container */
+:root {
+  --container-max-width: 1200px;
+}
+
+.container {
+  max-width: var(--container-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .container { padding-left: 1.25rem; padding-right: 1.25rem; }
+}
+
+@media (min-width: 1024px) {
+  .container { padding-left: 2rem; padding-right: 2rem; }
 }
 
 @theme inline {
@@ -38,4 +62,206 @@ body {
 
 .animate-fadeUp {
   animation: fadeUp 0.4s ease-out both;
+}
+
+/* Auth page responsive layout */
+.auth-container {
+  align-items: stretch;
+}
+
+@media (max-width: 1024px) {
+  .auth-container {
+    flex-direction: column;
+  }
+
+  .auth-left {
+    display: none !important;
+  }
+
+  .auth-right {
+    padding: 1.5rem 1rem !important;
+    align-items: stretch !important;
+  }
+
+  .auth-card {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .auth-social-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-header h3 {
+    font-size: 1.5rem !important;
+  }
+
+  .auth-tabs {
+    border-radius: 1rem !important;
+  }
+
+  .auth-form button[type="submit"] {
+    font-size: 1rem !important;
+  }
+}
+
+/* Responsive Sidebar State */
+.sidebar-open {
+  overflow: hidden;
+}
+
+/* Hide sidebar labels on small mobile screens */
+@media (max-width: 480px) {
+  .hide-mobile-label {
+    display: none !important;
+  }
+  
+  .hide-mobile-info {
+    display: none !important;
+  }
+}
+
+/* Main content responsive adjustments */
+@media (max-width: 1024px) {
+  .main-content {
+    margin-left: 0 !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-top: 5rem !important;
+  }
+}
+
+@media (min-width: 1025px) {
+  .main-content {
+    margin-left: var(--sidebar-width) !important;
+    padding: 4em 2em !important;
+  }
+}
+
+/* Grid responsive utilities */
+@media (max-width: 768px) {
+  .responsive-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .responsive-grid-3 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .responsive-padding {
+    padding: 1.5em 1em !important;
+  }
+  
+  .responsive-font-lg {
+    font-size: 1.5rem !important;
+  }
+  
+  .responsive-font-xl {
+    font-size: 2rem !important;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .responsive-grid-2 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  
+  .responsive-padding {
+    padding: 2em 1.5em !important;
+  }
+}
+
+@media (min-width: 1025px) {
+  .responsive-grid-2 {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+  }
+}
+
+/* Card responsive styles */
+@media (max-width: 640px) {
+  .card-responsive {
+    padding: 1.5em !important;
+    border-radius: 16px !important;
+  }
+}
+
+/* Button responsive sizing */
+@media (max-width: 768px) {
+  .btn-responsive {
+    padding: 0.7em 1.2em !important;
+    font-size: 0.9rem !important;
+  }
+  
+  .btn-responsive-lg {
+    padding: 0.8em 1.5em !important;
+    font-size: 1rem !important;
+  }
+}
+
+/* Input responsive sizing */
+@media (max-width: 768px) {
+  .input-responsive {
+    height: 3em !important;
+    font-size: 0.9rem !important;
+  }
+}
+
+/* Hide elements on mobile */
+@media (max-width: 1024px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
+/* Show elements on mobile only */
+@media (min-width: 1025px) {
+  .show-mobile-only {
+    display: none !important;
+  }
+}
+
+/* Modal/Overlay for mobile menu */
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+  backdrop-filter: blur(4px);
+}
+
+/* Swiper responsive slides */
+@media (max-width: 640px) {
+  .swiper-responsive .swiper-slide {
+    width: 100% !important;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .swiper-responsive .swiper-slide {
+    width: 50% !important;
+  }
+}
+
+/* Text responsive utilities */
+@media (max-width: 768px) {
+  .text-responsive-xl {
+    font-size: 1.8rem !important;
+  }
+  
+  .text-responsive-2xl {
+    font-size: 2rem !important;
+  }
+}
+
+/* Spacing utilities */
+.section-spacing {
+  margin-bottom: 2em;
+}
+
+@media (min-width: 769px) {
+  .section-spacing {
+    margin-bottom: 3em;
+  }
 }

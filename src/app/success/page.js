@@ -4,8 +4,20 @@ import React, { useEffect } from "react";
 
 export default function Success() {
   useEffect(() => {
-    // Unlock premium after successful payment
-    localStorage.setItem("premium", "true");
+    const syncPremium = async () => {
+      try {
+        const res = await fetch("/api/billing/status");
+        const data = await res.json();
+        if (data?.success) {
+          localStorage.setItem("premium", data.data.isPremium ? "true" : "false");
+        } else {
+          localStorage.setItem("premium", "true");
+        }
+      } catch {
+        localStorage.setItem("premium", "true");
+      }
+    };
+    syncPremium();
   }, []);
 
   return (

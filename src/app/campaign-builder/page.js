@@ -9,7 +9,6 @@ import {
   Target, Rocket, CheckCircle2,
   Loader2, FileText, X
 } from "lucide-react";
-import Sidebar from "@/Component/sidebar";
 
 export default function CampaignBuilder() {
   const router = useRouter();
@@ -22,7 +21,10 @@ export default function CampaignBuilder() {
     website: "",
     leadsCount: 0,
     tone: "Professional",
-    model: "llama3.2"
+    model: "llama3.2",
+    abEnabled: false,
+    abVariantA: "",
+    abVariantB: ""
   });
 
   // --- LOGIC ---
@@ -61,7 +63,10 @@ export default function CampaignBuilder() {
           campaign: {
             name: formData.name,
             leads: formData.leadsCount,
-            website: formData.website
+            website: formData.website,
+            abEnabled: formData.abEnabled,
+            abVariantA: formData.abVariantA,
+            abVariantB: formData.abVariantB,
           }
         }),
       });
@@ -109,11 +114,8 @@ export default function CampaignBuilder() {
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "#030712", color: "white", fontFamily: "sans-serif" }}>
-      <Sidebar />
-
-      <main style={{ flex: 1, marginLeft: "13em", display: "flex", justifyContent: "center", padding: "4em 2em" }}>
-        <div style={{ width: "100%", maxWidth: "700px" }}>
+    <div style={{ display: "flex", justifyContent: "center", color: "white", fontFamily: "sans-serif" }}>
+      <div style={{ width: "100%", maxWidth: "700px" }}>
           
           {/* STEP INDICATOR */}
           <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginBottom: "3em" }}>
@@ -224,6 +226,35 @@ export default function CampaignBuilder() {
                   </select>
                 </div>
 
+                <div style={{ marginBottom: "2.5em" }}>
+                  <label style={labelStyle}>A/B Test Subject Lines</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6em", marginTop: "0.6em" }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.abEnabled}
+                      onChange={(e) => setFormData({ ...formData, abEnabled: e.target.checked })}
+                      style={{ width: "1rem", height: "1rem" }}
+                    />
+                    <span style={{ color: "#9ca3af", fontSize: "0.9rem" }}>Enable A/B testing</span>
+                  </div>
+                  {formData.abEnabled && (
+                    <div style={{ display: "grid", gap: "0.8em", marginTop: "1em" }}>
+                      <input
+                        style={inputStyle}
+                        placeholder="Variant A subject line"
+                        value={formData.abVariantA}
+                        onChange={(e) => setFormData({ ...formData, abVariantA: e.target.value })}
+                      />
+                      <input
+                        style={inputStyle}
+                        placeholder="Variant B subject line"
+                        value={formData.abVariantB}
+                        onChange={(e) => setFormData({ ...formData, abVariantB: e.target.value })}
+                      />
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ display: "flex", gap: "1em" }}>
                   <button onClick={prevStep} style={secondaryBtnStyle}>Back</button>
                   <button onClick={nextStep} style={primaryBtnStyle}>Review & Launch <ArrowRight size={18} /></button>
@@ -254,7 +285,6 @@ export default function CampaignBuilder() {
             )}
           </AnimatePresence>
         </div>
-      </main>
     </div>
   );
 }
